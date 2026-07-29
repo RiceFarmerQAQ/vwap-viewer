@@ -183,6 +183,9 @@
   .sw-run:hover{opacity:.88} .sw-run:disabled{opacity:.4;cursor:default}
   .sw-note{font-family:var(--mono);font-size:10.5px;color:var(--ink-faint);
     margin-top:12px;line-height:1.5}
+  .sw-grid-checks{display:flex;flex-direction:column;gap:6px;font-family:var(--mono);font-size:11.5px}
+  .sw-grid-checks label{display:flex;align-items:center;gap:8px;color:var(--ink-dim);cursor:pointer}
+  .sw-grid-checks input{width:auto}
 
   .sw-results{display:flex;flex-direction:column;min-height:0;overflow:hidden;padding:18px 20px}
   .sw-live{display:flex;gap:22px;flex-wrap:wrap;padding-bottom:14px;margin-bottom:6px;
@@ -214,7 +217,7 @@
 <header>
   <h1>VWAP Trend Trading</h1>
   <span class="sub" id="subtitle">loading…</span>
-  <span class="sub" style="color:var(--long)">build v11</span>
+  <span class="sub" style="color:var(--long)">build v12</span>
   <div class="spacer"></div>
   <div class="seg" id="viewseg" style="margin-right:6px">
     <button data-view="chart" class="on">Chart</button>
@@ -300,6 +303,15 @@
 
 <section id="sweep-view" style="display:none">
   <div class="sw-panel">
+    <h2 class="sw-h">Strategy</h2>
+    <div class="sw-field">
+      <label>Strategy</label>
+      <select id="sw-strat">
+        <option value="trend">Trend-following (fade nothing)</option>
+        <option value="meanrev">Mean-reversion (fade VWAP band)</option>
+      </select>
+    </div>
+
     <h2 class="sw-h">Base parameters</h2>
     <div class="sw-field">
       <label>Timeframe</label>
@@ -317,30 +329,92 @@
       <input type="range" id="sw-comm" min="0" max="20" step="1" value="5">
       <span class="sw-hint">slider × 0.0001</span>
     </div>
-    <div class="sw-field">
-      <label>Entry rule</label>
-      <select id="sw-entry">
-        <option value="close">Reverse on close through VWAP</option>
-        <option value="confirm">Require N confirming closes</option>
-      </select>
-    </div>
-    <div class="sw-field" id="sw-confirm-wrap" style="display:none">
-      <label>Confirm bars <span id="sw-confirm-v">2</span></label>
-      <input type="range" id="sw-confirm" min="1" max="6" step="1" value="2">
+
+    <!-- TREND-only controls -->
+    <div class="sw-strat-trend">
+      <div class="sw-field">
+        <label>Entry rule</label>
+        <select id="sw-entry">
+          <option value="close">Reverse on close through VWAP</option>
+          <option value="confirm">Require N confirming closes</option>
+        </select>
+      </div>
+      <div class="sw-field" id="sw-confirm-wrap" style="display:none">
+        <label>Confirm bars <span id="sw-confirm-v">2</span></label>
+        <input type="range" id="sw-confirm" min="1" max="6" step="1" value="2">
+      </div>
+      <div class="sw-field">
+        <label>Take-profit <span id="sw-tp-v">off</span></label>
+        <input type="range" id="sw-tp" min="0" max="60" step="5" value="0">
+        <span class="sw-hint">× avg VWAP distance (0 = off)</span>
+      </div>
     </div>
 
-    <h2 class="sw-h">Sweep</h2>
+    <!-- MEAN-REVERSION-only controls -->
+    <div class="sw-strat-mr" style="display:none">
+      <div class="sw-field">
+        <label>Band basis</label>
+        <select id="sw-band">
+          <option value="sigma">Std-dev band (±kσ)</option>
+          <option value="avgdist">Avg-distance multiple</option>
+        </select>
+      </div>
+      <div class="sw-field" id="sw-sigma-wrap">
+        <label>Fade beyond <span id="sw-sigma-v">2.0σ</span></label>
+        <input type="range" id="sw-sigma" min="10" max="40" step="1" value="20">
+        <span class="sw-hint">slider ÷ 10 = σ multiple</span>
+      </div>
+      <div class="sw-field" id="sw-emult-wrap" style="display:none">
+        <label>Fade beyond <span id="sw-emult-v">2.0×</span></label>
+        <input type="range" id="sw-emult" min="10" max="40" step="1" value="20">
+        <span class="sw-hint">slider ÷ 10 = distance multiple</span>
+      </div>
+      <div class="sw-field">
+        <label style="display:flex;align-items:center;gap:8px;justify-content:flex-start">
+          <input type="checkbox" id="sw-tfilter" style="width:auto">Trend filter (skip trending days)
+        </label>
+      </div>
+      <div class="sw-field" id="sw-tmax-wrap" style="display:none">
+        <label>Only trade when trend ≤ <span id="sw-tmax-v">0.60</span></label>
+        <input type="range" id="sw-tmax" min="20" max="90" step="5" value="60">
+        <span class="sw-hint">slider ÷ 100 · lower = choppier only</span>
+      </div>
+    </div>
+
     <div class="sw-field">
+      <label>Stop-loss <span id="sw-sl-v">off</span></label>
+      <input type="range" id="sw-sl" min="0" max="60" step="5" value="0">
+      <span class="sw-hint">× avg VWAP distance (0 = off)</span>
+    </div>
+
+    <h2 class="sw-h">Explore</h2>
+    <div class="sw-field">
+      <label>Mode</label>
+      <select id="sw-mode">
+        <option value="sweep">Sweep one parameter</option>
+        <option value="grid">Grid search (rank combos)</option>
+      </select>
+    </div>
+    <div class="sw-field" id="sw-sweep-param">
       <label>Parameter to vary</label>
       <select id="sw-param">
         <option value="riskPct">Position size (%)</option>
         <option value="barMinutes">Timeframe (min)</option>
         <option value="commissionPS">Commission ($/share)</option>
         <option value="confirmBars">Confirm bars</option>
+        <option value="sigmaMult">Fade σ (mean-rev)</option>
+        <option value="entryMult">Fade dist (mean-rev)</option>
+        <option value="stopMult">Stop-loss ×</option>
+        <option value="tpMult">Take-profit ×</option>
+        <option value="trendMax">Trend filter threshold</option>
       </select>
     </div>
+    <div class="sw-field" id="sw-grid-fields" style="display:none">
+      <label>Vary these (grid)</label>
+      <div id="sw-grid-checks" class="sw-grid-checks"></div>
+    </div>
     <div class="sw-field">
-      <label>Metric</label>
+      <label>Rank / plot by</label>
       <select id="sw-metric">
         <option value="totalRet">Total return %</option>
         <option value="sharpe">Sharpe</option>
@@ -350,7 +424,7 @@
         <option value="winRate">Win rate %</option>
       </select>
     </div>
-    <button class="sw-run" id="sw-run">Run sweep</button>
+    <button class="sw-run" id="sw-run">Run</button>
     <div class="sw-note" id="sw-note"></div>
   </div>
 
@@ -964,11 +1038,19 @@ async function loadAllDays(sym){
 function swBaseParams(){
   const commSlider = +document.getElementById("sw-comm").value;
   return {
+    strategy: document.getElementById("sw-strat").value,
     barMinutes: +document.getElementById("sw-tf").value,
     riskPct: (+document.getElementById("sw-risk").value)/100,
     commissionPS: commSlider*0.0001,
     entryMode: document.getElementById("sw-entry").value,
     confirmBars: +document.getElementById("sw-confirm").value,
+    tpMult: (+document.getElementById("sw-tp").value)/10,
+    stopMult: (+document.getElementById("sw-sl").value)/10,
+    bandMode: document.getElementById("sw-band").value,
+    sigmaMult: (+document.getElementById("sw-sigma").value)/10,
+    entryMult: (+document.getElementById("sw-emult").value)/10,
+    trendFilter: document.getElementById("sw-tfilter").checked,
+    trendMax: (+document.getElementById("sw-tmax").value)/100,
     initialCapital: 25000,
   };
 }
@@ -978,8 +1060,23 @@ function swValues(param){
   if(param==="barMinutes") return [1,5,15,30];
   if(param==="commissionPS") return [0,0.0005,0.001,0.002,0.005];
   if(param==="confirmBars") return [1,2,3,4,5];
+  if(param==="sigmaMult") return [1.5,2,2.5,3,3.5];
+  if(param==="entryMult") return [1.5,2,2.5,3,3.5];
+  if(param==="stopMult") return [0,2,3,4,5];
+  if(param==="tpMult") return [0,2,3,4,5];
+  if(param==="trendMax") return [0.25,0.4,0.5,0.6,0.75];
   return [];
 }
+// grid-search candidate parameters (checkbox list) with their value sets
+const GRID_PARAMS = {
+  barMinutes:{label:"Timeframe",vals:[1,5,15]},
+  sigmaMult:{label:"Fade σ",vals:[1.5,2,2.5,3]},
+  entryMult:{label:"Fade dist",vals:[1.5,2,2.5,3]},
+  stopMult:{label:"Stop-loss ×",vals:[0,2,3,4]},
+  tpMult:{label:"Take-profit ×",vals:[0,2,3,4]},
+  trendMax:{label:"Trend filter",vals:[0.25,0.4,0.6]},
+  riskPct:{label:"Position size",vals:[0.25,0.5,1.0]},
+};
 const METRIC_LABEL = {totalRet:"Total return %",sharpe:"Sharpe",maxDD:"Max drawdown %",
   finalEq:"Final $",nTrades:"Trades",winRate:"Win rate %"};
 function metricVal(m,key){
@@ -992,6 +1089,8 @@ function fmtParamVal(param,v){
   if(param==="riskPct") return (v*100)+"%";
   if(param==="barMinutes") return v+"m";
   if(param==="commissionPS") return "$"+v;
+  if(param==="sigmaMult") return v+"σ";
+  if(param==="trendMax") return v.toFixed(2);
   return v;
 }
 function fmtMetric(key,v){
@@ -1002,6 +1101,8 @@ function fmtMetric(key,v){
 }
 
 async function runSweep(){
+  const mode=document.getElementById("sw-mode").value;
+  if(mode==="grid") return runGrid();
   const btn=document.getElementById("sw-run");
   const param=document.getElementById("sw-param").value;
   const metric=document.getElementById("sw-metric").value;
@@ -1012,7 +1113,6 @@ async function runSweep(){
 
   const days=await loadAllDays(swState.sym);
   const base=swBaseParams();
-  // run async in chunks so the progress UI can paint
   const out=[];
   for(let i=0;i<values.length;i++){
     prog.textContent=`Running ${i+1}/${values.length}  (${fmtParamVal(param,values[i])})…`;
@@ -1023,6 +1123,53 @@ async function runSweep(){
   prog.style.display="none"; btn.disabled=false;
   swState.results={param,metric,values:out};
   drawSweep(); renderSweepTable();
+}
+
+// grid search: run every combination of the checked parameters, rank by metric
+async function runGrid(){
+  const btn=document.getElementById("sw-run");
+  const metric=document.getElementById("sw-metric").value;
+  const checked=[...document.querySelectorAll("#sw-grid-checks input:checked")].map(c=>c.value);
+  if(!checked.length){ document.getElementById("sw-note").textContent="Pick at least one parameter to grid-search."; return; }
+  const grid={}; checked.forEach(k=>grid[k]=GRID_PARAMS[k].vals);
+  const total=checked.reduce((a,k)=>a*GRID_PARAMS[k].vals.length,1);
+  document.getElementById("sw-empty").style.display="none";
+  const prog=document.getElementById("sw-progress");
+  prog.style.display="flex"; btn.disabled=true;
+
+  const days=await loadAllDays(swState.sym);
+  const base=swBaseParams();
+  // run combos with periodic yields so the progress paints
+  const keys=Object.keys(grid);
+  let combos=[{}];
+  for(const k of keys){ const nx=[]; for(const c of combos) for(const v of grid[k]) nx.push({...c,[k]:v}); combos=nx; }
+  const out=[];
+  for(let i=0;i<combos.length;i++){
+    if(i%10===0){ prog.textContent=`Grid ${i+1}/${combos.length}…`; await new Promise(r=>setTimeout(r,0)); }
+    out.push({params:combos[i], ...Engine.runBacktest(days,{...base,...combos[i]})});
+  }
+  prog.style.display="none"; btn.disabled=false;
+  // rank: higher better, except maxDD (closer to 0 better)
+  out.sort((a,b)=> metric==="maxDD" ? b[metric]-a[metric] : metricVal(b,metric)-metricVal(a,metric));
+  swState.grid={keys,metric,rows:out};
+  renderGrid();
+}
+
+function renderGrid(){
+  const G=swState.grid; if(!G) return;
+  // clear the line chart; grid uses the table area for a leaderboard
+  const cv=document.getElementById("sw-chart"); cv.getContext("2d").clearRect(0,0,cv.width,cv.height);
+  document.getElementById("sw-empty").style.display="none";
+  const metricKeys=["totalRet","sharpe","maxDD","finalEq","nTrades","winRate"];
+  const head=`<tr>`+G.keys.map(k=>`<th>${GRID_PARAMS[k].label}</th>`).join("")+
+    metricKeys.map(k=>`<th>${METRIC_LABEL[k]}</th>`).join("")+`</tr>`;
+  const rows=G.rows.slice(0,50).map((r,idx)=>`<tr class="${idx===0?'best':''}">`+
+    G.keys.map(k=>`<td>${fmtParamVal(k,r.params[k])}</td>`).join("")+
+    metricKeys.map(k=>`<td>${fmtMetric(k,metricVal(r,k))}</td>`).join("")+`</tr>`).join("");
+  document.getElementById("sw-table").innerHTML=
+    `<table>${head}${rows}</table>`;
+  document.getElementById("sw-note").innerHTML=
+    `Ranked ${G.rows.length} combinations by ${METRIC_LABEL[G.metric]}. Best row highlighted; top 50 shown.`;
 }
 
 function drawSweep(){
@@ -1088,8 +1235,18 @@ async function liveRun(){
   const m=Engine.runBacktest(days, p);
   const el=document.getElementById("sw-live");
   if(!el) return;
-  const tf=p.barMinutes+"m", rk=(p.riskPct*100)+"%",
-        cm="$"+p.commissionPS, en=p.entryMode==="confirm"?`confirm ${p.confirmBars}`:"close";
+  const tf=p.barMinutes+"m", rk=(p.riskPct*100)+"%";
+  let tag;
+  if(p.strategy==="meanrev"){
+    const band=p.bandMode==="sigma"?`${p.sigmaMult}σ`:`${p.entryMult}× dist`;
+    const filt=p.trendFilter?` · filter≤${p.trendMax.toFixed(2)}`:"";
+    const sl=p.stopMult>0?` · SL ${p.stopMult}×`:"";
+    tag=`mean-rev · ${tf} · fade ${band}${sl}${filt}`;
+  } else {
+    const en=p.entryMode==="confirm"?`confirm ${p.confirmBars}`:"close";
+    const sl=p.stopMult>0?` · SL ${p.stopMult}×`:"", tp=p.tpMult>0?` · TP ${p.tpMult}×`:"";
+    tag=`trend · ${tf} · ${rk} · ${en}${sl}${tp}`;
+  }
   el.innerHTML=`
     <div class="lstat"><span class="lk">Final $</span>
       <span class="lv ${m.finalEq>=25000?'pos':'neg'}">$${Math.round(m.finalEq).toLocaleString()}</span></div>
@@ -1099,17 +1256,57 @@ async function liveRun(){
     <div class="lstat"><span class="lk">Max DD</span><span class="lv neg">${(m.maxDD*100).toFixed(1)}%</span></div>
     <div class="lstat"><span class="lk">Trades</span><span class="lv">${m.nTrades.toLocaleString()}</span></div>
     <div class="lstat"><span class="lk">Win rate</span><span class="lv">${(m.winRate*100).toFixed(1)}%</span></div>
-    <span class="tag">${tf} · ${rk} · ${cm}/sh · ${en}</span>`;
+    <span class="tag">${tag}</span>`;
 }
 function liveRunDebounced(){ clearTimeout(liveTimer); liveTimer=setTimeout(liveRun,180); }
 
+// show/hide strategy-specific control groups
+function syncStrategyUI(){
+  const strat=document.getElementById("sw-strat").value;
+  document.querySelector(".sw-strat-trend").style.display = strat==="trend"?"block":"none";
+  document.querySelector(".sw-strat-mr").style.display = strat==="meanrev"?"block":"none";
+}
+function syncBandUI(){
+  const band=document.getElementById("sw-band").value;
+  document.getElementById("sw-sigma-wrap").style.display = band==="sigma"?"flex":"none";
+  document.getElementById("sw-emult-wrap").style.display = band==="avgdist"?"flex":"none";
+}
+function syncModeUI(){
+  const mode=document.getElementById("sw-mode").value;
+  document.getElementById("sw-sweep-param").style.display = mode==="sweep"?"flex":"none";
+  document.getElementById("sw-grid-fields").style.display = mode==="grid"?"flex":"none";
+  document.getElementById("sw-run").textContent = mode==="grid"?"Run grid search":"Run sweep";
+}
+// build the grid-search checkbox list
+function buildGridChecks(){
+  const box=document.getElementById("sw-grid-checks");
+  box.innerHTML=Object.entries(GRID_PARAMS).map(([k,v])=>
+    `<label><input type="checkbox" value="${k}" ${['sigmaMult','stopMult'].includes(k)?'checked':''}>`+
+    `${v.label} <span style="color:var(--ink-faint)">(${v.vals.length})</span></label>`).join("");
+}
+
 // sweep UI wiring
+document.getElementById("sw-strat").addEventListener("change",()=>{syncStrategyUI();liveRunDebounced();});
+document.getElementById("sw-band").addEventListener("change",()=>{syncBandUI();liveRunDebounced();});
+document.getElementById("sw-mode").addEventListener("change",syncModeUI);
 document.getElementById("sw-risk").addEventListener("input",e=>{
   document.getElementById("sw-risk-v").textContent=e.target.value+"%"; liveRunDebounced();});
 document.getElementById("sw-comm").addEventListener("input",e=>{
   document.getElementById("sw-comm-v").textContent=(e.target.value*0.0001).toFixed(4); liveRunDebounced();});
 document.getElementById("sw-confirm").addEventListener("input",e=>{
   document.getElementById("sw-confirm-v").textContent=e.target.value; liveRunDebounced();});
+document.getElementById("sw-tp").addEventListener("input",e=>{
+  document.getElementById("sw-tp-v").textContent=e.target.value==="0"?"off":(e.target.value/10)+"×"; liveRunDebounced();});
+document.getElementById("sw-sl").addEventListener("input",e=>{
+  document.getElementById("sw-sl-v").textContent=e.target.value==="0"?"off":(e.target.value/10)+"×"; liveRunDebounced();});
+document.getElementById("sw-sigma").addEventListener("input",e=>{
+  document.getElementById("sw-sigma-v").textContent=(e.target.value/10).toFixed(1)+"σ"; liveRunDebounced();});
+document.getElementById("sw-emult").addEventListener("input",e=>{
+  document.getElementById("sw-emult-v").textContent=(e.target.value/10).toFixed(1)+"×"; liveRunDebounced();});
+document.getElementById("sw-tmax").addEventListener("input",e=>{
+  document.getElementById("sw-tmax-v").textContent=(e.target.value/100).toFixed(2); liveRunDebounced();});
+document.getElementById("sw-tfilter").addEventListener("change",e=>{
+  document.getElementById("sw-tmax-wrap").style.display=e.target.checked?"flex":"none"; liveRunDebounced();});
 document.getElementById("sw-tf").addEventListener("change",liveRunDebounced);
 document.getElementById("sw-entry").addEventListener("change",e=>{
   document.getElementById("sw-confirm-wrap").style.display=
@@ -1118,16 +1315,17 @@ document.getElementById("sw-run").addEventListener("click",runSweep);
 document.getElementById("symseg-sweep").addEventListener("click",e=>{
   const b=e.target.closest("button[data-sym]"); if(!b)return;
   document.querySelectorAll("#symseg-sweep button").forEach(x=>x.classList.remove("on"));
-  b.classList.add("on"); swState.sym=b.dataset.sym; swState.results=null;
+  b.classList.add("on"); swState.sym=b.dataset.sym; swState.results=null; swState.grid=null;
   document.getElementById("sw-table").innerHTML="";
   document.getElementById("sw-empty").style.display="flex";
   const cv=document.getElementById("sw-chart"); cv.getContext("2d").clearRect(0,0,cv.width,cv.height);
   liveRun();
 });
+buildGridChecks(); syncStrategyUI(); syncBandUI(); syncModeUI();
 document.getElementById("sw-note").innerHTML=
-  "Runs the full 2018–2023 backtest for each value, in your browser. "+
-  "Uses equal-weight VWAP (no volume in the data), so absolute figures differ "+
-  "slightly from the reference backtest — use it for comparing settings.";
+  "Runs the full 2018–2023 backtest in your browser. Uses equal-weight VWAP "+
+  "(no volume in the data), so absolute figures differ slightly from the "+
+  "reference backtest — use it for comparing settings.";
 
 loadIndex();
 </script>
