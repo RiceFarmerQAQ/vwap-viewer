@@ -1,0 +1,23 @@
+# Raw 1-minute source data — too large for the repo, not needed by the site
+*_ohlcv-1m.csv
+xnas-itch-*.csv
+
+# Intermediate exports (the per-year files in data/ are what the site uses)
+trades_QQQ.json
+trades_TQQQ.json
+
+# Backtest outputs
+*_vwap_equity_daily.csv
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
