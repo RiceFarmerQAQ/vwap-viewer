@@ -185,6 +185,15 @@
     margin-top:12px;line-height:1.5}
 
   .sw-results{display:flex;flex-direction:column;min-height:0;overflow:hidden;padding:18px 20px}
+  .sw-live{display:flex;gap:22px;flex-wrap:wrap;padding-bottom:14px;margin-bottom:6px;
+    border-bottom:1px solid var(--line)}
+  .sw-live .lstat{display:flex;flex-direction:column;gap:3px}
+  .sw-live .lk{font-family:var(--mono);font-size:9.5px;letter-spacing:.07em;
+    text-transform:uppercase;color:var(--ink-faint)}
+  .sw-live .lv{font-family:var(--mono);font-size:18px;font-weight:700;letter-spacing:-.01em;color:var(--ink)}
+  .sw-live .lv.pos{color:var(--up)} .sw-live .lv.neg{color:var(--down)}
+  .sw-live .tag{font-family:var(--mono);font-size:10px;color:var(--ink-faint);
+    align-self:center;margin-left:auto}
   .sw-chart-wrap{position:relative;flex:1;min-height:200px}
   #sw-chart{width:100%;height:100%;display:block}
   .sw-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
@@ -205,7 +214,7 @@
 <header>
   <h1>VWAP Trend Trading</h1>
   <span class="sub" id="subtitle">loading…</span>
-  <span class="sub" style="color:var(--long)">build v10</span>
+  <span class="sub" style="color:var(--long)">build v11</span>
   <div class="spacer"></div>
   <div class="seg" id="viewseg" style="margin-right:6px">
     <button data-view="chart" class="on">Chart</button>
@@ -346,6 +355,7 @@
   </div>
 
   <div class="sw-results">
+    <div class="sw-live" id="sw-live"></div>
     <div class="sw-chart-wrap"><canvas id="sw-chart"></canvas>
       <div class="sw-empty" id="sw-empty">Set your base parameters, choose one to sweep, and run.</div>
       <div class="sw-progress" id="sw-progress" style="display:none"></div>
@@ -906,6 +916,7 @@ function setView(v){
     swState.sym = state.sym;
     document.querySelectorAll("#symseg-sweep button").forEach(x=>
       x.classList.toggle("on", x.dataset.sym===swState.sym));
+    liveRun();
     if(swState.results) drawSweep();
   } else {
     draw();
@@ -1068,16 +1079,41 @@ function renderSweepTable(){
   document.getElementById("sw-table").innerHTML=`<table>${head}${rows}</table>`;
 }
 
+// live single-run readout at current base params (recomputes on any change)
+let liveTimer=null;
+async function liveRun(){
+  if(!swState.sym || !state.index) return;
+  const days=await loadAllDays(swState.sym);
+  const p=swBaseParams();
+  const m=Engine.runBacktest(days, p);
+  const el=document.getElementById("sw-live");
+  if(!el) return;
+  const tf=p.barMinutes+"m", rk=(p.riskPct*100)+"%",
+        cm="$"+p.commissionPS, en=p.entryMode==="confirm"?`confirm ${p.confirmBars}`:"close";
+  el.innerHTML=`
+    <div class="lstat"><span class="lk">Final $</span>
+      <span class="lv ${m.finalEq>=25000?'pos':'neg'}">$${Math.round(m.finalEq).toLocaleString()}</span></div>
+    <div class="lstat"><span class="lk">Total return</span>
+      <span class="lv ${m.totalRet>=0?'pos':'neg'}">${(m.totalRet*100).toFixed(1)}%</span></div>
+    <div class="lstat"><span class="lk">Sharpe</span><span class="lv">${m.sharpe.toFixed(2)}</span></div>
+    <div class="lstat"><span class="lk">Max DD</span><span class="lv neg">${(m.maxDD*100).toFixed(1)}%</span></div>
+    <div class="lstat"><span class="lk">Trades</span><span class="lv">${m.nTrades.toLocaleString()}</span></div>
+    <div class="lstat"><span class="lk">Win rate</span><span class="lv">${(m.winRate*100).toFixed(1)}%</span></div>
+    <span class="tag">${tf} · ${rk} · ${cm}/sh · ${en}</span>`;
+}
+function liveRunDebounced(){ clearTimeout(liveTimer); liveTimer=setTimeout(liveRun,180); }
+
 // sweep UI wiring
-document.getElementById("sw-risk").addEventListener("input",e=>
-  document.getElementById("sw-risk-v").textContent=e.target.value+"%");
-document.getElementById("sw-comm").addEventListener("input",e=>
-  document.getElementById("sw-comm-v").textContent=(e.target.value*0.0001).toFixed(4));
-document.getElementById("sw-confirm").addEventListener("input",e=>
-  document.getElementById("sw-confirm-v").textContent=e.target.value);
-document.getElementById("sw-entry").addEventListener("change",e=>
+document.getElementById("sw-risk").addEventListener("input",e=>{
+  document.getElementById("sw-risk-v").textContent=e.target.value+"%"; liveRunDebounced();});
+document.getElementById("sw-comm").addEventListener("input",e=>{
+  document.getElementById("sw-comm-v").textContent=(e.target.value*0.0001).toFixed(4); liveRunDebounced();});
+document.getElementById("sw-confirm").addEventListener("input",e=>{
+  document.getElementById("sw-confirm-v").textContent=e.target.value; liveRunDebounced();});
+document.getElementById("sw-tf").addEventListener("change",liveRunDebounced);
+document.getElementById("sw-entry").addEventListener("change",e=>{
   document.getElementById("sw-confirm-wrap").style.display=
-    e.target.value==="confirm"?"flex":"none");
+    e.target.value==="confirm"?"flex":"none"; liveRunDebounced();});
 document.getElementById("sw-run").addEventListener("click",runSweep);
 document.getElementById("symseg-sweep").addEventListener("click",e=>{
   const b=e.target.closest("button[data-sym]"); if(!b)return;
@@ -1086,6 +1122,7 @@ document.getElementById("symseg-sweep").addEventListener("click",e=>{
   document.getElementById("sw-table").innerHTML="";
   document.getElementById("sw-empty").style.display="flex";
   const cv=document.getElementById("sw-chart"); cv.getContext("2d").clearRect(0,0,cv.width,cv.height);
+  liveRun();
 });
 document.getElementById("sw-note").innerHTML=
   "Runs the full 2018–2023 backtest for each value, in your browser. "+
