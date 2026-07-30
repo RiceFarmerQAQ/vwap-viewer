@@ -4,7 +4,7 @@ An interactive viewer for the VWAP Trend Trading strategy from Zarattini & Aziz
 (2023), *"VWAP: The Holy Grail for Day Trading Systems"* (SSRN 4631351),
 backtested on 1-minute QQQ and TQQQ data.
 
-**Live site:** https://YOUR-USERNAME.github.io/vwap-viewer/
+**Live site:** https://ricefarmerqaq.github.io/vwap-viewer/
 
 ## What it shows
 
