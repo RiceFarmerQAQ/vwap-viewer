@@ -77,6 +77,17 @@
   .trades{flex:1;overflow-y:auto;min-height:120px}
   .trades h2{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
     color:var(--ink-faint);padding:13px 18px 7px}
+  .tsum{margin:8px 14px 12px;padding:11px 13px;border-radius:9px;background:var(--panel-2);
+    border:1px solid var(--line);font-family:var(--mono)}
+  .tsum.pos{border-left:3px solid var(--up)} .tsum.neg{border-left:3px solid var(--down)}
+  .tsum-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+  .tsum-side{font-size:11px;font-weight:700}
+  .tsum-side.LONG{color:var(--long)} .tsum-side.SHORT{color:var(--short)}
+  .tsum-pnl{font-size:17px;font-weight:700;letter-spacing:-.01em}
+  .tsum.pos .tsum-pnl{color:var(--up)} .tsum.neg .tsum-pnl{color:var(--down)}
+  .tsum-row{display:flex;justify-content:space-between;font-size:11px;color:var(--ink-dim);
+    padding:2px 0}
+  .tsum-row span:first-child{color:var(--ink-faint)}
   .trow{display:grid;grid-template-columns:48px 1fr auto;gap:8px;align-items:center;
     padding:8px 18px;font-family:var(--mono);font-size:12px;cursor:pointer;
     border-left:2px solid transparent;transition:.1s}
@@ -217,7 +228,7 @@
 <header>
   <h1>VWAP Trend Trading</h1>
   <span class="sub" id="subtitle">loading…</span>
-  <span class="sub" style="color:var(--long)">build v14</span>
+  <span class="sub" style="color:var(--long)">build v15</span>
   <div class="spacer"></div>
   <div class="seg" id="viewseg" style="margin-right:6px">
     <button data-view="chart" class="on">Chart</button>
@@ -265,7 +276,7 @@
     <canvas id="chart"></canvas>
     <div class="chart-empty" id="empty">select a day</div>
     <div class="tooltip" id="tip"></div>
-    <div class="hint">drag to pan · use +/− to zoom · fit for whole day</div>
+    <div class="hint">scroll to zoom · drag to pan · click a trade for details</div>
   </div>
 
   <aside>
@@ -449,7 +460,7 @@
 <script>
 const state = {
   sym:"QQQ", year:null, date:null,
-  index:null, cache:{}, day:null, selTrade:null,
+  index:null, cache:{}, day:null, selTrade:null, selNum:null,
   geom:null,        // stored for hover hit-testing
   view:null         // {lo,hi} bar-index window for zoom/pan; null = full day
 };
@@ -553,6 +564,7 @@ async function loadDay(){
   state.rawDay = days[state.date];
   state.day = dayForStrategy(state.rawDay);
   state.selTrade = null;
+  state.selNum = null;
   state.view = null;   // fit whole day on load
   document.getElementById("empty").style.display = "none";
   renderStat(); renderLog(); draw();
@@ -581,20 +593,47 @@ function renderLog(){
   const d = state.day;
   const box = document.getElementById("tradelog");
   if(!d.trades.length){ box.innerHTML = `<div class="none">no trades this session</div>`; return; }
-  box.innerHTML = d.trades.map((t,idx)=>`
-    <div class="trow ${state.selTrade===idx?'sel':''}" data-idx="${idx}">
+
+  // summary card for the selected round-trip
+  let summary="";
+  if(state.selNum!=null){
+    const legs = d.trades.filter(t=>t.num===state.selNum).sort((a,b)=>a.i-b.i);
+    const rt=(d.roundtrips||[]).find(r=>r.num===state.selNum);
+    if(legs.length>=2){
+      const e=legs[0], xt=legs[legs.length-1];
+      const pnl = rt? rt.pnl : null;
+      const gain = pnl!=null ? pnl>=0 : (e.side==="LONG"? xt.price>e.price : xt.price<e.price);
+      const cls = gain?"pos":"neg";
+      const pnlStr = pnl!=null ? (pnl>=0?"+$":"-$")+Math.abs(pnl).toFixed(2) : "—";
+      const move = ((xt.price-e.price)/e.price*100)*(e.side==="LONG"?1:-1);
+      summary=`<div class="tsum ${cls}">
+        <div class="tsum-top">
+          <span class="tsum-side ${e.side}">${e.side} #${state.selNum}</span>
+          <span class="tsum-pnl">${pnlStr}</span>
+        </div>
+        <div class="tsum-row"><span>Entry</span><span>${e.time} @ ${e.price.toFixed(2)}</span></div>
+        <div class="tsum-row"><span>Exit</span><span>${xt.time} @ ${xt.price.toFixed(2)}</span></div>
+        <div class="tsum-row"><span>Move</span><span>${move>=0?"+":""}${move.toFixed(2)}%</span></div>
+      </div>`;
+    }
+  }
+
+  box.innerHTML = summary + d.trades.map((t,idx)=>`
+    <div class="trow ${state.selNum===t.num?'sel':''}" data-idx="${idx}" data-num="${t.num}">
       <span class="time">${t.time}</span>
       <span class="side ${t.side}">${t.label || (t.side+' '+t.kind)}</span>
       <span class="px">${t.price.toFixed(2)}</span>
     </div>`).join("");
   box.querySelectorAll(".trow").forEach(row=>{
     row.onclick = ()=>{
-      const idx = +row.dataset.idx;
-      state.selTrade = idx;
-      // frame the selected trade: center a ~60-bar window on it
-      const t = state.day.trades[idx], n = state.day.c.length;
-      const half = 30;
-      let lo = Math.max(0, t.i-half), hi = Math.min(n-1, t.i+half);
+      const num = +row.dataset.num;
+      state.selNum = num;
+      state.selTrade = +row.dataset.idx;
+      const legs = state.day.trades.filter(t=>t.num===num);
+      const n = state.day.c.length;
+      const iMin = Math.min(...legs.map(t=>t.i)), iMax = Math.max(...legs.map(t=>t.i));
+      const padBars = Math.max(10, Math.round((iMax-iMin)*0.4));
+      let lo = Math.max(0, iMin-padBars), hi = Math.min(n-1, iMax+padBars);
       state.view = {lo,hi};
       renderLog(); draw();
     };
@@ -706,10 +745,39 @@ function draw(){
   ctx.font='10px '+cssv("--mono");
   // track label rows near each x to avoid overlap when two events share a bar
   const placed = [];
+  // draw a connector between the selected round-trip's entry and exit, with a
+  // shaded region and a P&L badge, BEFORE the markers so markers sit on top
+  if(state.selNum!=null){
+    const legs = d.trades.filter(t=>t.num===state.selNum).sort((a,b)=>a.i-b.i);
+    if(legs.length>=2){
+      const e=legs[0], xt=legs[legs.length-1];
+      const rt=(d.roundtrips||[]).find(r=>r.num===state.selNum);
+      const pnl = rt? rt.pnl : null;
+      const gain = pnl!=null ? pnl>=0 : (xt.side==="LONG"? xt.price>e.price : xt.price<e.price);
+      const col = gain?cssv("--up"):cssv("--down");
+      const ex=x(e.i), exy=y(e.price), xx=x(xt.i), xxy=y(xt.price);
+      // shaded band spanning the trade
+      ctx.fillStyle=col; ctx.globalAlpha=0.07; ctx.fillRect(ex,padT,Math.max(1,xx-ex),plotH); ctx.globalAlpha=1;
+      // connecting line entry -> exit
+      ctx.strokeStyle=col; ctx.lineWidth=1.6; ctx.setLineDash([5,3]);
+      ctx.beginPath(); ctx.moveTo(ex,exy); ctx.lineTo(xx,xxy); ctx.stroke(); ctx.setLineDash([]);
+      // P&L badge at the midpoint
+      if(pnl!=null){
+        const mx=(ex+xx)/2, my=Math.min(exy,xxy)-16;
+        const s=(pnl>=0?"+$":"-$")+Math.abs(pnl).toFixed(0);
+        ctx.font='bold 11px '+cssv("--mono"); const tw=ctx.measureText(s).width;
+        ctx.fillStyle=cssv("--panel-2"); ctx.strokeStyle=col; ctx.lineWidth=1.2;
+        roundRect(ctx, mx-tw/2-6, my-10, tw+12, 18, 5); ctx.fill(); ctx.stroke();
+        ctx.fillStyle=col; ctx.textAlign="center"; ctx.textBaseline="middle";
+        ctx.fillText(s, mx, my-1);
+      }
+    }
+  }
+
   d.trades.forEach((t,idx)=>{
     if(t.i < vlo-1 || t.i > vhi+1) return;   // skip off-screen trades
     const cx=x(t.i), cy=y(t.price);
-    const sel = state.selTrade===idx;
+    const sel = state.selNum===t.num;        // highlight BOTH legs of the round-trip
     const isLong = t.side==="LONG";
     const isEntry = t.kind==="ENTRY";
     const col = isLong?cssv("--long"):cssv("--short");
@@ -890,6 +958,19 @@ window.addEventListener("mouseup",()=>{
 document.getElementById("zoomin").addEventListener("click",()=>zoomBy(0.6));
 document.getElementById("zoomout").addEventListener("click",()=>zoomBy(1.7));
 document.getElementById("reset").addEventListener("click",()=>{ state.view=null; draw(); });
+
+// mouse-wheel zoom, centered on the cursor. preventDefault stops the page from
+// scrolling (the chart area is fixed to the viewport, so nothing else moves).
+canvas.addEventListener("wheel",e=>{
+  if(!state.day) return;
+  e.preventDefault();
+  const rect=canvas.getBoundingClientRect();
+  const mx=e.clientX-rect.left;
+  const centerBar=xToBar(mx);
+  // wheel up (deltaY<0) zooms in, wheel down zooms out
+  const factor = e.deltaY<0 ? 0.82 : 1.22;
+  zoomBy(factor, centerBar);
+},{passive:false});
 
 // controls
 document.getElementById("symseg").addEventListener("click",e=>{
