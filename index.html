@@ -217,12 +217,16 @@
 <header>
   <h1>VWAP Trend Trading</h1>
   <span class="sub" id="subtitle">loading…</span>
-  <span class="sub" style="color:var(--long)">build v12</span>
+  <span class="sub" style="color:var(--long)">build v13</span>
   <div class="spacer"></div>
   <div class="seg" id="viewseg" style="margin-right:6px">
     <button data-view="chart" class="on">Chart</button>
     <button data-view="calendar">Calendar</button>
     <button data-view="sweep">Analysis</button>
+  </div>
+  <div class="seg" id="stratseg" style="margin-right:6px" title="Strategy shown across all views">
+    <button data-strat="trend" class="on">Trend</button>
+    <button data-strat="meanrev">Mean-rev</button>
   </div>
   <div class="controls" id="chart-controls">
     <div class="seg" id="symseg">
@@ -450,6 +454,64 @@ const canvas = document.getElementById("chart");
 const ctx = canvas.getContext("2d");
 const cssv = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
+// ---- shared strategy state, driven by the header toggle + Analysis-tab controls ----
+// activeStrategy is 'trend' or 'meanrev'. When mean-rev, Chart & Calendar run the
+// engine live with the parameters currently set in the Analysis panel.
+const shared = { strategy:"trend" };
+// read the Analysis-tab params, but force the chosen strategy. Falls back to engine
+// defaults if the Analysis controls aren't present yet.
+function activeConfig(strategy){
+  let p;
+  try { p = swBaseParams(); } catch(e){ p = {...Engine.DEFAULTS}; }
+  return {...p, strategy};
+}
+
+// Adapt a raw day object to the shape the Chart/Calendar expect, for the active
+// strategy. Trend → use the pre-computed JSON (fast, matches reference). Mean-rev
+// → run the engine and rebuild trades/roundtrips/pnl in the same shape.
+function dayForStrategy(rawDay){
+  if(shared.strategy==="trend") return rawDay;         // pre-computed fields
+  // mean-reversion: simulate this one day in isolation (equity base 25k so the
+  // day's % is self-contained; $ P&L is per-day relative to that base)
+  const cfg=activeConfig("meanrev");
+  const eqRef={v:cfg.initialCapital||25000};
+  const r=Engine.simDay(rawDay, cfg, eqRef);
+  const bars=r.bars, vwap=r.vwap, held=r.held;
+  // build trade markers (ENTRY/EXIT) from held[] transitions, numbered per day,
+  // and pair them into roundtrips carrying times/prices for the calendar detail.
+  const trades=[]; let prev=0, num=0, openNum=0, openT="", openPx=0;
+  const rtByNum={};
+  const sideName={1:"LONG","-1":"SHORT",0:"FLAT"};
+  for(let i=0;i<held.length;i++){
+    const h=held[i];
+    if(h!==prev){
+      if(prev!==0){
+        trades.push({i, time:bars.t[i], price:+bars.c[i].toFixed(4),
+          side:sideName[prev], kind:"EXIT", num:openNum,
+          label:`${sideName[prev][0]+sideName[prev].slice(1).toLowerCase()} Exit #${openNum}`});
+        if(rtByNum[openNum]){ rtByNum[openNum].exit_time=bars.t[i]; rtByNum[openNum].exit_px=+bars.c[i].toFixed(4); }
+      }
+      if(h!==0){ num++; openNum=num; openT=bars.t[i]; openPx=+bars.c[i].toFixed(4);
+        trades.push({i, time:bars.t[i], price:openPx, side:sideName[h], kind:"ENTRY", num:openNum,
+          label:`${sideName[h][0]+sideName[h].slice(1).toLowerCase()} Entry #${openNum}`});
+        rtByNum[openNum]={num:openNum, side:sideName[h], entry_time:openT, entry_px:openPx,
+          exit_time:"", exit_px:0}; }
+    }
+    prev=h;
+  }
+  // attach engine's $ P&L to each roundtrip by number
+  for(const rt of r.roundtrips){ if(rtByNum[rt.num]) rtByNum[rt.num].pnl=+rt.pnl.toFixed(2); }
+  const roundtrips=Object.values(rtByNum).filter(rt=>rt.pnl!==undefined);
+  const eqStart=cfg.initialCapital||25000, eqEnd=eqRef.v;
+  return {
+    t:bars.t, o:bars.o, h:bars.h, l:bars.l, c:bars.c,
+    vwap, pos:held, trades, roundtrips,
+    pnl_pct:+((eqEnd/eqStart-1)*100).toFixed(3),
+    pnl_dollars:+((eqEnd-eqStart)).toFixed(2),
+    eq_start:eqStart, eq_end:+eqEnd.toFixed(2),
+  };
+}
+
 async function loadIndex(){
   const r = await fetch("data/index.json");
   state.index = await r.json();
@@ -485,7 +547,8 @@ async function loadYearData(sym,year){
 }
 async function loadDay(){
   const days = await loadYearData(state.sym, state.year);
-  state.day = days[state.date];
+  state.rawDay = days[state.date];
+  state.day = dayForStrategy(state.rawDay);
   state.selTrade = null;
   state.view = null;   // fit whole day on load
   document.getElementById("empty").style.display = "none";
@@ -854,10 +917,36 @@ function buildMonthOptions(){
   sel.value = calState.month;
   renderCalendar();
 }
-function renderCalendar(){
-  const cal = calState.cal[calState.sym];
+
+// Calendar data for the active strategy. Trend → the precomputed calendar.json.
+// Mean-rev → compute each day of the CURRENT month with the engine (cached by
+// symbol+config so re-renders are instant; recomputed when config changes).
+async function calDataForMonth(sym, ym){
+  if(shared.strategy==="trend") return calState.cal[sym];
+  const cfg=activeConfig("meanrev");
+  const key=sym+"|"+JSON.stringify(cfg)+"|"+ym;
+  calState.mrCache=calState.mrCache||{};
+  if(calState.mrCache[key]) return calState.mrCache[key];
+  // need the raw bars for that month's days → load the year
+  const yr=ym.slice(0,4);
+  const days=await loadYearData(sym, yr);
+  const out={};
+  for(const date of Object.keys(days)){
+    if(date.slice(0,7)!==ym) continue;
+    const eqRef={v:cfg.initialCapital||25000};
+    const r=Engine.simDay(days[date], cfg, eqRef);
+    const rts=r.roundtrips||[];
+    out[date]={ pnl:+(eqRef.v-(cfg.initialCapital||25000)).toFixed(2),
+      n:rts.length, w:rts.filter(t=>t.pnl>0).length };
+  }
+  calState.mrCache[key]=out;
+  return out;
+}
+
+async function renderCalendar(){
   const ym = calState.month;
   const [Y,M] = ym.split("-").map(Number);
+  const cal = await calDataForMonth(calState.sym, ym);
   // gather this month's trading days with data
   const daysInMonth = [];
   for(const [date,info] of Object.entries(cal)){
@@ -917,7 +1006,13 @@ function renderCalendar(){
   }
   grid.innerHTML = cells;
   grid.querySelectorAll(".cal-cell.trad").forEach(c=>{
-    c.onclick = ()=>{ calState.selDate=c.dataset.date; renderCalendar(); showDayDetail(c.dataset.date); };
+    c.onclick = ()=>{
+      calState.selDate=c.dataset.date;
+      // update highlight in place (no full re-render) then show detail
+      grid.querySelectorAll(".cal-cell.trad").forEach(x=>x.classList.remove("sel"));
+      c.classList.add("sel");
+      showDayDetail(c.dataset.date);
+    };
   });
   updateMonthNav();
 }
@@ -931,7 +1026,7 @@ async function showDayDetail(date){
   detail.innerHTML = `<div class="cal-detail-empty">loading…</div>`;
   const yr = date.slice(0,4);
   const days = await loadYearData(calState.sym, yr);
-  const day = days[date];
+  const day = dayForStrategy(days[date]);
   const rts = day.roundtrips||[];
   const dt = new Date(date+"T12:00");
   const dstr = dt.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"});
@@ -999,6 +1094,23 @@ function setView(v){
 document.getElementById("viewseg").addEventListener("click",e=>{
   const b=e.target.closest("button[data-view]"); if(!b)return;
   setView(b.dataset.view);
+});
+// global strategy toggle — affects Chart, Calendar, and Analysis
+document.getElementById("stratseg").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-strat]"); if(!b)return;
+  document.querySelectorAll("#stratseg button").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on"); shared.strategy=b.dataset.strat;
+  // keep the Analysis-tab strategy dropdown in sync so the shared config matches
+  const sel=document.getElementById("sw-strat");
+  if(sel && sel.value!==shared.strategy){ sel.value=shared.strategy; syncStrategyUI(); }
+  // re-render whichever view is showing
+  const cur=document.querySelector("#viewseg button.on").dataset.view;
+  if(cur==="chart"){ if(state.date) loadDay(); }
+  else if(cur==="calendar"){ calState.selDate=null;
+    document.getElementById("cal-detail").innerHTML=
+      `<div class="cal-detail-empty">Select a day to see its trades</div>`;
+    renderCalendar(); }
+  else if(cur==="sweep"){ liveRun(); }
 });
 document.getElementById("symseg-cal").addEventListener("click",e=>{
   const b=e.target.closest("button[data-sym]"); if(!b)return;
@@ -1286,7 +1398,14 @@ function buildGridChecks(){
 }
 
 // sweep UI wiring
-document.getElementById("sw-strat").addEventListener("change",()=>{syncStrategyUI();liveRunDebounced();});
+document.getElementById("sw-strat").addEventListener("change",()=>{
+  syncStrategyUI();
+  // keep the global toggle and shared strategy in sync
+  shared.strategy=document.getElementById("sw-strat").value;
+  document.querySelectorAll("#stratseg button").forEach(x=>
+    x.classList.toggle("on", x.dataset.strat===shared.strategy));
+  liveRunDebounced();
+});
 document.getElementById("sw-band").addEventListener("change",()=>{syncBandUI();liveRunDebounced();});
 document.getElementById("sw-mode").addEventListener("change",syncModeUI);
 document.getElementById("sw-risk").addEventListener("input",e=>{
