@@ -1,84 +1,1494 @@
-# Deploying the viewer to GitHub Pages
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VWAP Trend Trading — Trade Viewer</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#151a21; --panel-2:#1b2129; --line:#262d38;
+    --ink:#e6edf3; --ink-dim:#8b98a8; --ink-faint:#5b6675;
+    --long:#37d0c4;      /* cyan = long */
+    --short:#f5a742;     /* amber = short */
+    --vwap:#a06bff;      /* violet = vwap */
+    --up:#2f9e78; --down:#c4574f;
+    --grid:#1e2530;
+    --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;max-width:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);
+       font-size:14px;line-height:1.4;-webkit-font-smoothing:antialiased;
+       display:flex;flex-direction:column;height:100vh}
 
-The `vwap-viewer/` folder is a complete, ready-to-publish static site.
-Follow these steps to put it online for free at
-`https://YOUR-USERNAME.github.io/vwap-viewer/`.
+  header{display:flex;align-items:baseline;gap:18px;flex-wrap:wrap;
+    padding:16px 22px;border-bottom:1px solid var(--line);background:var(--panel)}
+  header h1{font-size:15px;font-weight:600;letter-spacing:.02em}
+  header .sub{font-family:var(--mono);font-size:11.5px;color:var(--ink-faint);
+    letter-spacing:.03em}
+  header .spacer{flex:1}
 
----
+  .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+  .seg button{background:var(--panel-2);color:var(--ink-dim);border:0;
+    font-family:var(--mono);font-size:12px;font-weight:500;padding:7px 13px;
+    cursor:pointer;transition:.12s}
+  .seg button:hover{color:var(--ink)}
+  .seg button.on{background:var(--ink);color:var(--bg)}
+  select{background:var(--panel-2);color:var(--ink);border:1px solid var(--line);
+    border-radius:7px;font-family:var(--mono);font-size:12px;padding:7px 9px;cursor:pointer}
+  .navbtn{background:var(--panel-2);color:var(--ink-dim);border:1px solid var(--line);
+    border-radius:7px;font-family:var(--mono);font-size:14px;width:32px;height:32px;
+    cursor:pointer;transition:.12s}
+  .navbtn:hover:not(:disabled){color:var(--ink);border-color:var(--ink-faint)}
+  .navbtn:disabled{opacity:.35;cursor:default}
 
-## Option A — GitHub website only (no command line)
+  main{display:grid;grid-template-columns:1fr 300px;gap:0;flex:1;min-height:0;overflow:hidden}
+  @media(max-width:860px){main{grid-template-columns:1fr}}
 
-1. **Create the repository**
-   - Go to https://github.com/new
-   - Repository name: `vwap-viewer`
-   - Set it to **Public** (Pages is free for public repos)
-   - Do NOT add a README/gitignore (the folder already has them)
-   - Click **Create repository**
+  .chartwrap{position:relative;padding:14px 8px 8px 8px;min-height:0;
+    min-width:0;overflow:hidden;touch-action:none;
+    user-select:none;-webkit-user-select:none;-moz-user-select:none}
+  #chart{display:block;touch-action:none;-webkit-user-drag:none;user-select:none;
+    max-width:100%}
+  .chart-empty{position:absolute;inset:0;display:flex;align-items:center;
+    justify-content:center;color:var(--ink-faint);font-family:var(--mono);font-size:13px}
 
-2. **Upload the files**
-   - On the new repo page, click **uploading an existing file**
-   - Drag **the contents of the `vwap-viewer` folder** (not the folder itself)
-     into the upload area: `index.html`, the `data` folder, `README.md`,
-     `.gitignore`, and `.nojekyll`.
-     - If the browser won't let you drag the `data` folder, drag its files in
-       and put them under a `data/` path, or use Option B below (Git handles
-       folders cleanly).
-   - Scroll down, click **Commit changes**
+  aside{border-left:1px solid var(--line);background:var(--panel);
+    display:flex;flex-direction:column;min-height:0}
+  @media(max-width:860px){aside{border-left:0;border-top:1px solid var(--line)}}
 
-3. **Turn on Pages**
-   - Repo → **Settings** → **Pages** (left sidebar)
-   - Under **Build and deployment**, Source = **Deploy from a branch**
-   - Branch = **main**, folder = **/ (root)** → **Save**
+  .daystat{padding:16px 18px;border-bottom:1px solid var(--line)}
+  .daystat .date{font-family:var(--mono);font-size:13px;color:var(--ink-dim);
+    letter-spacing:.03em;margin-bottom:10px}
+  .daystat .pnl{font-family:var(--mono);font-size:30px;font-weight:700;letter-spacing:-.01em}
+  .daystat .pnl.pos{color:var(--up)} .daystat .pnl.neg{color:var(--down)}
+  .daystat .meta{display:flex;gap:16px;margin-top:8px;font-family:var(--mono);
+    font-size:11.5px;color:var(--ink-faint)}
+  .daystat .meta b{color:var(--ink-dim);font-weight:500}
 
-4. **Wait ~1 minute**, then open
-   `https://YOUR-USERNAME.github.io/vwap-viewer/`
-   You should see the header tag **build v9** and the Chart/Calendar tabs.
+  .legend{display:flex;gap:14px;padding:11px 18px;border-bottom:1px solid var(--line);
+    font-family:var(--mono);font-size:11px;color:var(--ink-dim);flex-wrap:wrap}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;
+    margin-right:5px;vertical-align:middle}
 
----
+  .trades{flex:1;overflow-y:auto;min-height:120px}
+  .trades h2{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--ink-faint);padding:13px 18px 7px}
+  .trow{display:grid;grid-template-columns:48px 1fr auto;gap:8px;align-items:center;
+    padding:8px 18px;font-family:var(--mono);font-size:12px;cursor:pointer;
+    border-left:2px solid transparent;transition:.1s}
+  .trow:hover{background:var(--panel-2)}
+  .trow.sel{background:var(--panel-2);border-left-color:var(--ink)}
+  .trow .time{color:var(--ink-dim)}
+  .trow .kind{font-size:10px;letter-spacing:.05em;color:var(--ink-faint)}
+  .trow .side{font-weight:700}
+  .trow .side.LONG{color:var(--long)} .trow .side.SHORT{color:var(--short)}
+  .trow .side.FLAT{color:var(--ink-faint)}
+  .trow .px{color:var(--ink);text-align:right}
+  .trades .none{padding:14px 18px;color:var(--ink-faint);font-family:var(--mono);font-size:12px}
 
-## Option B — Git command line (better for updates)
+  .loading{padding:14px 18px;color:var(--ink-faint);font-family:var(--mono);font-size:12px}
+  .tooltip{position:absolute;pointer-events:none;background:var(--panel-2);
+    border:1px solid var(--line);border-radius:6px;padding:7px 9px;font-family:var(--mono);
+    font-size:11px;color:var(--ink);white-space:nowrap;opacity:0;transition:opacity .08s;
+    z-index:5;box-shadow:0 4px 18px rgba(0,0,0,.4)}
+  .tooltip .r{color:var(--ink-dim)}
+  .hint{position:absolute;left:14px;bottom:12px;font-family:var(--mono);font-size:10.5px;
+    color:var(--ink-faint);pointer-events:none;opacity:.7;letter-spacing:.02em}
+  .chartwrap{cursor:crosshair}
+  .chartwrap.panning{cursor:grabbing}
 
-From inside the `vwap-viewer` folder:
+  /* ---- calendar view ---- */
+  #calendar-view{flex:1;min-height:0;display:grid;grid-template-columns:1fr 320px;overflow:hidden}
+  @media(max-width:860px){#calendar-view{grid-template-columns:1fr}}
+  .cal-main{display:flex;flex-direction:column;min-height:0;overflow:hidden;padding:18px 20px}
+  .cal-summary{display:flex;gap:26px;flex-wrap:wrap;align-items:baseline;
+    padding-bottom:16px;border-bottom:1px solid var(--line);margin-bottom:14px}
+  .cal-summary .big{font-family:var(--mono);font-size:26px;font-weight:700;letter-spacing:-.01em}
+  .cal-summary .big.pos{color:var(--up)} .cal-summary .big.neg{color:var(--down)}
+  .cal-summary .stat{display:flex;flex-direction:column;gap:2px}
+  .cal-summary .stat .k{font-family:var(--mono);font-size:10px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--ink-faint)}
+  .cal-summary .stat .v{font-family:var(--mono);font-size:15px;color:var(--ink)}
+  .cal-dow{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;
+    font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--ink-faint);padding-bottom:7px}
+  .cal-dow span{text-align:left;padding-left:2px}
+  .cal-grid-wrap{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column}
+  .cal-grid{display:grid;grid-template-columns:repeat(5,1fr);grid-auto-rows:1fr;
+    gap:8px;flex:1;min-height:0}
+  .cal-cell{border:1px solid var(--line);border-radius:9px;padding:9px 10px;
+    display:flex;flex-direction:column;justify-content:space-between;min-height:78px;
+    background:var(--panel-2);position:relative;transition:.12s}
+  .cal-cell.empty{background:transparent;border-color:transparent}
+  .cal-cell.trad{cursor:pointer}
+  .cal-cell.trad:hover{border-color:var(--ink-faint);transform:translateY(-1px)}
+  .cal-cell.sel{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+  .cal-cell .dnum{font-family:var(--mono);font-size:11px;color:var(--ink-faint)}
+  .cal-cell .dpnl{font-family:var(--mono);font-size:16px;font-weight:700;letter-spacing:-.01em}
+  .cal-cell .dpnl.pos{color:var(--up)} .cal-cell .dpnl.neg{color:var(--down)}
+  .cal-cell .dn{font-family:var(--mono);font-size:10px;color:var(--ink-faint)}
+  .cal-cell .heat{position:absolute;inset:0;border-radius:9px;pointer-events:none;opacity:.10}
 
-```bash
-git init
-git add .
-git commit -m "VWAP trade viewer"
-git branch -M main
-git remote add origin https://github.com/YOUR-USERNAME/vwap-viewer.git
-git push -u origin main
-```
+  .cal-detail{border-left:1px solid var(--line);background:var(--panel);
+    display:flex;flex-direction:column;min-height:0;overflow:hidden}
+  @media(max-width:860px){.cal-detail{border-left:0;border-top:1px solid var(--line)}}
+  .cal-detail-empty{padding:20px 18px;color:var(--ink-faint);font-family:var(--mono);font-size:12px}
+  .cd-head{padding:15px 18px;border-bottom:1px solid var(--line)}
+  .cd-head .d{font-family:var(--mono);font-size:13px;color:var(--ink-dim);margin-bottom:8px}
+  .cd-head .p{font-family:var(--mono);font-size:24px;font-weight:700}
+  .cd-head .p.pos{color:var(--up)} .cd-head .p.neg{color:var(--down)}
+  .cd-head .m{display:flex;gap:14px;margin-top:6px;font-family:var(--mono);
+    font-size:11px;color:var(--ink-faint)}
+  .cd-head .go{margin-top:11px;background:var(--panel-2);color:var(--ink);
+    border:1px solid var(--line);border-radius:7px;font-family:var(--mono);font-size:11.5px;
+    padding:7px 11px;cursor:pointer;transition:.12s}
+  .cd-head .go:hover{border-color:var(--ink-faint)}
+  .cd-list{flex:1;overflow-y:auto;min-height:0}
+  .cd-list h3{font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--ink-faint);padding:12px 18px 6px}
+  .cdrow{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;
+    padding:8px 18px;font-family:var(--mono);font-size:12px;border-left:2px solid transparent}
+  .cdrow .n{color:var(--ink-faint);font-size:10px}
+  .cdrow .side{font-weight:700}
+  .cdrow .side.LONG{color:var(--long)} .cdrow .side.SHORT{color:var(--short)}
+  .cdrow .times{color:var(--ink-dim);font-size:11px}
+  .cdrow .pnl{text-align:right;font-weight:500}
+  .cdrow .pnl.pos{color:var(--up)} .cdrow .pnl.neg{color:var(--down)}
+  .cdrow.pos{border-left-color:var(--up)} .cdrow.neg{border-left-color:var(--down)}
 
-Then do step 3 above (Settings → Pages → deploy from `main`, root).
+  /* ---- sweep / analysis view ---- */
+  #sweep-view{flex:1;min-height:0;display:grid;grid-template-columns:290px 1fr;overflow:hidden}
+  @media(max-width:860px){#sweep-view{grid-template-columns:1fr}}
+  .sw-panel{border-right:1px solid var(--line);background:var(--panel);
+    padding:16px 18px;overflow-y:auto;min-height:0}
+  .sw-h{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--ink-faint);margin:6px 0 12px;padding-top:8px;border-top:1px solid var(--line)}
+  .sw-h:first-child{border-top:0;padding-top:0}
+  .sw-field{margin-bottom:14px;display:flex;flex-direction:column;gap:6px}
+  .sw-field label{font-family:var(--mono);font-size:11.5px;color:var(--ink-dim);
+    display:flex;justify-content:space-between}
+  .sw-field label span{color:var(--long)}
+  .sw-field select,.sw-field input[type=range]{width:100%}
+  .sw-field select{background:var(--panel-2);color:var(--ink);border:1px solid var(--line);
+    border-radius:7px;font-family:var(--mono);font-size:12px;padding:7px 9px;cursor:pointer}
+  .sw-field input[type=range]{accent-color:var(--long);cursor:pointer}
+  .sw-hint{font-family:var(--mono);font-size:10px;color:var(--ink-faint)}
+  .sw-run{width:100%;background:var(--ink);color:var(--bg);border:0;border-radius:8px;
+    font-family:var(--mono);font-size:13px;font-weight:600;padding:11px;cursor:pointer;
+    margin-top:4px;transition:.12s}
+  .sw-run:hover{opacity:.88} .sw-run:disabled{opacity:.4;cursor:default}
+  .sw-note{font-family:var(--mono);font-size:10.5px;color:var(--ink-faint);
+    margin-top:12px;line-height:1.5}
+  .sw-grid-checks{display:flex;flex-direction:column;gap:6px;font-family:var(--mono);font-size:11.5px}
+  .sw-grid-checks label{display:flex;align-items:center;gap:8px;color:var(--ink-dim);cursor:pointer}
+  .sw-grid-checks input{width:auto}
 
-To update the site later (after regenerating data or editing `index.html`):
+  .sw-results{display:flex;flex-direction:column;min-height:0;overflow:hidden;padding:18px 20px}
+  .sw-live{display:flex;gap:22px;flex-wrap:wrap;padding-bottom:14px;margin-bottom:6px;
+    border-bottom:1px solid var(--line)}
+  .sw-live .lstat{display:flex;flex-direction:column;gap:3px}
+  .sw-live .lk{font-family:var(--mono);font-size:9.5px;letter-spacing:.07em;
+    text-transform:uppercase;color:var(--ink-faint)}
+  .sw-live .lv{font-family:var(--mono);font-size:18px;font-weight:700;letter-spacing:-.01em;color:var(--ink)}
+  .sw-live .lv.pos{color:var(--up)} .sw-live .lv.neg{color:var(--down)}
+  .sw-live .tag{font-family:var(--mono);font-size:10px;color:var(--ink-faint);
+    align-self:center;margin-left:auto}
+  .sw-chart-wrap{position:relative;flex:1;min-height:200px}
+  #sw-chart{width:100%;height:100%;display:block}
+  .sw-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    color:var(--ink-faint);font-family:var(--mono);font-size:13px;text-align:center;padding:0 40px}
+  .sw-progress{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    color:var(--ink-dim);font-family:var(--mono);font-size:13px;background:rgba(14,17,22,.7)}
+  .sw-table{max-height:210px;overflow-y:auto;margin-top:14px;border-top:1px solid var(--line)}
+  .sw-table table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px}
+  .sw-table th{text-align:right;color:var(--ink-faint);font-weight:500;font-size:10px;
+    letter-spacing:.06em;text-transform:uppercase;padding:9px 12px 7px;position:sticky;top:0;
+    background:var(--panel)}
+  .sw-table th:first-child,.sw-table td:first-child{text-align:left}
+  .sw-table td{text-align:right;padding:7px 12px;color:var(--ink);border-top:1px solid var(--line)}
+  .sw-table tr.best td{color:var(--up);font-weight:700}
+</style>
+</head>
+<body>
+<header>
+  <h1>VWAP Trend Trading</h1>
+  <span class="sub" id="subtitle">loading…</span>
+  <span class="sub" style="color:var(--long)">build v14</span>
+  <div class="spacer"></div>
+  <div class="seg" id="viewseg" style="margin-right:6px">
+    <button data-view="chart" class="on">Chart</button>
+    <button data-view="calendar">Calendar</button>
+    <button data-view="sweep">Analysis</button>
+  </div>
+  <div class="seg" id="stratseg" style="margin-right:6px" title="Strategy shown across all views">
+    <button data-strat="trend" class="on">Trend</button>
+    <button data-strat="meanrev">Mean-rev</button>
+    <button data-strat="combined">Combined</button>
+  </div>
+  <div class="controls" id="chart-controls">
+    <div class="seg" id="symseg">
+      <button data-sym="QQQ" class="on">QQQ</button>
+      <button data-sym="TQQQ">TQQQ</button>
+    </div>
+    <select id="yearsel"></select>
+    <button class="navbtn" id="prev" title="Previous day">‹</button>
+    <select id="daysel"></select>
+    <button class="navbtn" id="next" title="Next day">›</button>
+    <span style="width:1px;height:22px;background:var(--line);margin:0 2px"></span>
+    <button class="navbtn" id="zoomout" title="Zoom out">−</button>
+    <button class="navbtn" id="zoomin" title="Zoom in">+</button>
+    <button class="navbtn" id="reset" title="Fit whole day" style="width:auto;padding:0 11px;font-size:11px;font-family:var(--mono)">fit</button>
+  </div>
+  <div class="controls" id="calendar-controls" style="display:none">
+    <div class="seg" id="symseg-cal">
+      <button data-sym="QQQ" class="on">QQQ</button>
+      <button data-sym="TQQQ">TQQQ</button>
+    </div>
+    <button class="navbtn" id="mprev" title="Previous month">‹</button>
+    <select id="monthsel"></select>
+    <button class="navbtn" id="mnext" title="Next month">›</button>
+  </div>
+  <div class="controls" id="sweep-controls" style="display:none">
+    <div class="seg" id="symseg-sweep">
+      <button data-sym="QQQ" class="on">QQQ</button>
+      <button data-sym="TQQQ">TQQQ</button>
+    </div>
+  </div>
+</header>
 
-```bash
-git add .
-git commit -m "update"
-git push
-```
+<main id="chart-view">
+  <div class="chartwrap">
+    <canvas id="chart"></canvas>
+    <div class="chart-empty" id="empty">select a day</div>
+    <div class="tooltip" id="tip"></div>
+    <div class="hint">drag to pan · use +/− to zoom · fit for whole day</div>
+  </div>
 
-The live site refreshes automatically within a minute or so.
+  <aside>
+    <div class="daystat">
+      <div class="date" id="d-date">—</div>
+      <div class="pnl" id="d-pnl">—</div>
+      <div class="meta">
+        <span><b id="d-trades">0</b> trades</span>
+        <span>end <b id="d-eq">—</b></span>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--long)"></i>long</span>
+      <span><i style="background:var(--short)"></i>short</span>
+      <span><i style="background:var(--vwap)"></i>vwap</span>
+      <span><i style="background:var(--vwap);opacity:.5"></i>±σ band</span>
+      <span><i style="background:var(--up)"></i>up</span>
+      <span><i style="background:var(--down)"></i>down</span>
+    </div>
+    <div class="trades">
+      <h2>Trade log</h2>
+      <div id="tradelog"></div>
+    </div>
+  </aside>
+</main>
 
----
+<section id="calendar-view" style="display:none">
+  <div class="cal-main">
+    <div class="cal-summary" id="cal-summary"></div>
+    <div class="cal-grid-wrap">
+      <div class="cal-dow">
+        <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span>
+      </div>
+      <div class="cal-grid" id="cal-grid"></div>
+    </div>
+  </div>
+  <aside class="cal-detail" id="cal-detail">
+    <div class="cal-detail-empty">Select a day to see its trades</div>
+  </aside>
+</section>
 
-## After it's live
+<section id="sweep-view" style="display:none">
+  <div class="sw-panel">
+    <h2 class="sw-h">Strategy</h2>
+    <div class="sw-field">
+      <label>Strategy</label>
+      <select id="sw-strat">
+        <option value="trend">Trend-following (fade nothing)</option>
+        <option value="meanrev">Mean-reversion (fade VWAP band)</option>
+        <option value="combined">Combined (trend + fade on band reject)</option>
+      </select>
+    </div>
 
-- Edit `README.md` and replace `YOUR-USERNAME` with your GitHub username so the
-  link works.
-- **Hard-refresh** (Ctrl+Shift+R) after each update — the browser caches
-  aggressively. The `build vN` tag in the header tells you which version loaded.
+    <h2 class="sw-h">Base parameters</h2>
+    <div class="sw-field">
+      <label>Timeframe</label>
+      <select id="sw-tf">
+        <option value="1">1 min</option><option value="5">5 min</option>
+        <option value="15">15 min</option><option value="30">30 min</option>
+      </select>
+    </div>
+    <div class="sw-field">
+      <label>Position size <span id="sw-risk-v">100%</span></label>
+      <input type="range" id="sw-risk" min="5" max="100" step="5" value="100">
+    </div>
+    <div class="sw-field">
+      <label>Commission $/share <span id="sw-comm-v">0.0005</span></label>
+      <input type="range" id="sw-comm" min="0" max="20" step="1" value="5">
+      <span class="sw-hint">slider × 0.0001</span>
+    </div>
 
-## Gotchas
+    <!-- TREND-only controls -->
+    <div class="sw-strat-trend">
+      <div class="sw-field">
+        <label>Entry rule</label>
+        <select id="sw-entry">
+          <option value="close">Reverse on close through VWAP</option>
+          <option value="confirm">Require N confirming closes</option>
+        </select>
+      </div>
+      <div class="sw-field" id="sw-confirm-wrap" style="display:none">
+        <label>Confirm bars <span id="sw-confirm-v">2</span></label>
+        <input type="range" id="sw-confirm" min="1" max="6" step="1" value="2">
+      </div>
+      <div class="sw-field">
+        <label>Take-profit <span id="sw-tp-v">off</span></label>
+        <input type="range" id="sw-tp" min="0" max="60" step="5" value="0">
+        <span class="sw-hint">× avg VWAP distance (0 = off)</span>
+      </div>
+    </div>
 
-- **Keep `.nojekyll`.** Without it, GitHub Pages runs Jekyll, which can ignore
-  or mangle files/folders. It must sit next to `index.html`.
-- **Upload the `data/` folder too.** Same rule as running locally — the page
-  fetches `data/index.json`, `data/calendar.json`, and the per-year files. No
-  data folder → the page loads but hangs on "select a day" with 404s.
-- **Public repo = public site and data.** Anyone with the URL can view it.
-  For a private site, GitHub Pages requires a paid plan; alternatively host on
-  Cloudflare Access or password-protect via another provider.
-- The raw `*_ohlcv-1m.csv` files are intentionally excluded by `.gitignore` —
-  they're huge and the site doesn't need them.
+    <!-- MEAN-REVERSION-only controls -->
+    <div class="sw-strat-mr" style="display:none">
+      <div class="sw-field">
+        <label>Band basis</label>
+        <select id="sw-band">
+          <option value="sigma">Std-dev band (±kσ)</option>
+          <option value="avgdist">Avg-distance multiple</option>
+        </select>
+      </div>
+      <div class="sw-field" id="sw-sigma-wrap">
+        <label>Fade beyond <span id="sw-sigma-v">2.0σ</span></label>
+        <input type="range" id="sw-sigma" min="10" max="40" step="1" value="20">
+        <span class="sw-hint">slider ÷ 10 = σ multiple</span>
+      </div>
+      <div class="sw-field" id="sw-emult-wrap" style="display:none">
+        <label>Fade beyond <span id="sw-emult-v">2.0×</span></label>
+        <input type="range" id="sw-emult" min="10" max="40" step="1" value="20">
+        <span class="sw-hint">slider ÷ 10 = distance multiple</span>
+      </div>
+      <div class="sw-field">
+        <label style="display:flex;align-items:center;gap:8px;justify-content:flex-start">
+          <input type="checkbox" id="sw-tfilter" style="width:auto">Trend filter (skip trending days)
+        </label>
+      </div>
+      <div class="sw-field" id="sw-tmax-wrap" style="display:none">
+        <label>Only trade when trend ≤ <span id="sw-tmax-v">0.60</span></label>
+        <input type="range" id="sw-tmax" min="20" max="90" step="5" value="60">
+        <span class="sw-hint">slider ÷ 100 · lower = choppier only</span>
+      </div>
+    </div>
+
+    <div class="sw-field">
+      <label>Stop-loss <span id="sw-sl-v">off</span></label>
+      <input type="range" id="sw-sl" min="0" max="60" step="5" value="0">
+      <span class="sw-hint">× avg VWAP distance (0 = off)</span>
+    </div>
+
+    <h2 class="sw-h">Explore</h2>
+    <div class="sw-field">
+      <label>Mode</label>
+      <select id="sw-mode">
+        <option value="sweep">Sweep one parameter</option>
+        <option value="grid">Grid search (rank combos)</option>
+      </select>
+    </div>
+    <div class="sw-field" id="sw-sweep-param">
+      <label>Parameter to vary</label>
+      <select id="sw-param">
+        <option value="riskPct">Position size (%)</option>
+        <option value="barMinutes">Timeframe (min)</option>
+        <option value="commissionPS">Commission ($/share)</option>
+        <option value="confirmBars">Confirm bars</option>
+        <option value="sigmaMult">Fade σ (mean-rev)</option>
+        <option value="entryMult">Fade dist (mean-rev)</option>
+        <option value="stopMult">Stop-loss ×</option>
+        <option value="tpMult">Take-profit ×</option>
+        <option value="trendMax">Trend filter threshold</option>
+      </select>
+    </div>
+    <div class="sw-field" id="sw-grid-fields" style="display:none">
+      <label>Vary these (grid)</label>
+      <div id="sw-grid-checks" class="sw-grid-checks"></div>
+    </div>
+    <div class="sw-field">
+      <label>Rank / plot by</label>
+      <select id="sw-metric">
+        <option value="totalRet">Total return %</option>
+        <option value="sharpe">Sharpe</option>
+        <option value="maxDD">Max drawdown %</option>
+        <option value="finalEq">Final $</option>
+        <option value="nTrades">Trade count</option>
+        <option value="winRate">Win rate %</option>
+      </select>
+    </div>
+    <button class="sw-run" id="sw-run">Run</button>
+    <div class="sw-note" id="sw-note"></div>
+  </div>
+
+  <div class="sw-results">
+    <div class="sw-live" id="sw-live"></div>
+    <div class="sw-chart-wrap"><canvas id="sw-chart"></canvas>
+      <div class="sw-empty" id="sw-empty">Set your base parameters, choose one to sweep, and run.</div>
+      <div class="sw-progress" id="sw-progress" style="display:none"></div>
+    </div>
+    <div class="sw-table" id="sw-table"></div>
+  </div>
+</section>
+
+<script src="engine.js"></script>
+<script>
+const state = {
+  sym:"QQQ", year:null, date:null,
+  index:null, cache:{}, day:null, selTrade:null,
+  geom:null,        // stored for hover hit-testing
+  view:null         // {lo,hi} bar-index window for zoom/pan; null = full day
+};
+const canvas = document.getElementById("chart");
+const ctx = canvas.getContext("2d");
+const cssv = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+// ---- shared strategy state, driven by the header toggle + Analysis-tab controls ----
+// activeStrategy is 'trend' or 'meanrev'. When mean-rev, Chart & Calendar run the
+// engine live with the parameters currently set in the Analysis panel.
+const shared = { strategy:"trend" };
+window.__sigmaMult = 2;
+// read the Analysis-tab params, but force the chosen strategy. Falls back to engine
+// defaults if the Analysis controls aren't present yet.
+function activeConfig(strategy){
+  let p;
+  try { p = swBaseParams(); } catch(e){ p = {...Engine.DEFAULTS}; }
+  return {...p, strategy};
+}
+
+// Adapt a raw day object to the shape the Chart/Calendar expect, for the active
+// strategy. Trend → use the pre-computed JSON (fast, matches reference). Mean-rev
+// → run the engine and rebuild trades/roundtrips/pnl in the same shape.
+function dayForStrategy(rawDay){
+  if(shared.strategy==="trend") return rawDay;         // pre-computed fields
+  // mean-reversion or combined: simulate this one day with the active strategy
+  const cfg=activeConfig(shared.strategy);
+  const eqRef={v:cfg.initialCapital||25000};
+  const r=Engine.simDay(rawDay, cfg, eqRef);
+  const bars=r.bars, vwap=r.vwap, held=r.held;
+  // build trade markers (ENTRY/EXIT) from held[] transitions, numbered per day,
+  // and pair them into roundtrips carrying times/prices for the calendar detail.
+  const trades=[]; let prev=0, num=0, openNum=0, openT="", openPx=0;
+  const rtByNum={};
+  const sideName={1:"LONG","-1":"SHORT",0:"FLAT"};
+  for(let i=0;i<held.length;i++){
+    const h=held[i];
+    if(h!==prev){
+      if(prev!==0){
+        trades.push({i, time:bars.t[i], price:+bars.c[i].toFixed(4),
+          side:sideName[prev], kind:"EXIT", num:openNum,
+          label:`${sideName[prev][0]+sideName[prev].slice(1).toLowerCase()} Exit #${openNum}`});
+        if(rtByNum[openNum]){ rtByNum[openNum].exit_time=bars.t[i]; rtByNum[openNum].exit_px=+bars.c[i].toFixed(4); }
+      }
+      if(h!==0){ num++; openNum=num; openT=bars.t[i]; openPx=+bars.c[i].toFixed(4);
+        trades.push({i, time:bars.t[i], price:openPx, side:sideName[h], kind:"ENTRY", num:openNum,
+          label:`${sideName[h][0]+sideName[h].slice(1).toLowerCase()} Entry #${openNum}`});
+        rtByNum[openNum]={num:openNum, side:sideName[h], entry_time:openT, entry_px:openPx,
+          exit_time:"", exit_px:0}; }
+    }
+    prev=h;
+  }
+  // attach engine's $ P&L to each roundtrip by number
+  for(const rt of r.roundtrips){ if(rtByNum[rt.num]) rtByNum[rt.num].pnl=+rt.pnl.toFixed(2); }
+  const roundtrips=Object.values(rtByNum).filter(rt=>rt.pnl!==undefined);
+  const eqStart=cfg.initialCapital||25000, eqEnd=eqRef.v;
+  return {
+    t:bars.t, o:bars.o, h:bars.h, l:bars.l, c:bars.c,
+    vwap, pos:held, trades, roundtrips,
+    pnl_pct:+((eqEnd/eqStart-1)*100).toFixed(3),
+    pnl_dollars:+((eqEnd-eqStart)).toFixed(2),
+    eq_start:eqStart, eq_end:+eqEnd.toFixed(2),
+  };
+}
+
+async function loadIndex(){
+  const r = await fetch("data/index.json");
+  state.index = await r.json();
+  buildYearOptions();
+}
+function buildYearOptions(){
+  const years = Object.keys(state.index[state.sym]).sort();
+  const ys = document.getElementById("yearsel");
+  ys.innerHTML = years.map(y=>`<option value="${y}">${y}</option>`).join("");
+  state.year = state.year && years.includes(state.year) ? state.year : years[0];
+  ys.value = state.year;
+  buildDayOptions();
+}
+function buildDayOptions(){
+  const days = state.index[state.sym][state.year];
+  const ds = document.getElementById("daysel");
+  ds.innerHTML = days.map(d=>`<option value="${d}">${d}</option>`).join("");
+  state.date = days.includes(state.date) ? state.date : days[0];
+  ds.value = state.date;
+  document.getElementById("subtitle").textContent =
+    `${state.sym} · 1-min · anchored VWAP · 2018–2023`;
+  loadDay();
+}
+async function loadYearData(sym,year){
+  const key = `${sym}_${year}`;
+  if(state.cache[key]) return state.cache[key];
+  document.getElementById("tradelog").innerHTML =
+    `<div class="loading">loading ${year}…</div>`;
+  const r = await fetch(`data/${sym}_${year}.json`);
+  const j = await r.json();
+  state.cache[key] = j.days;
+  return j.days;
+}
+async function loadDay(){
+  const days = await loadYearData(state.sym, state.year);
+  state.rawDay = days[state.date];
+  state.day = dayForStrategy(state.rawDay);
+  state.selTrade = null;
+  state.view = null;   // fit whole day on load
+  document.getElementById("empty").style.display = "none";
+  renderStat(); renderLog(); draw();
+  updateNav();
+}
+function updateNav(){
+  const days = state.index[state.sym][state.year];
+  const i = days.indexOf(state.date);
+  document.getElementById("prev").disabled = (i<=0);
+  document.getElementById("next").disabled = (i>=days.length-1);
+}
+
+function renderStat(){
+  const d = state.day;
+  document.getElementById("d-date").textContent =
+    new Date(state.date+"T12:00").toLocaleDateString("en-US",
+      {weekday:"short",year:"numeric",month:"short",day:"numeric"});
+  const p = d.pnl_pct;
+  const el = document.getElementById("d-pnl");
+  el.textContent = (p>=0?"+":"")+p.toFixed(2)+"%";
+  el.className = "pnl "+(p>=0?"pos":"neg");
+  document.getElementById("d-trades").textContent = d.trades.length;
+  document.getElementById("d-eq").textContent = "$"+d.eq_end.toLocaleString();
+}
+function renderLog(){
+  const d = state.day;
+  const box = document.getElementById("tradelog");
+  if(!d.trades.length){ box.innerHTML = `<div class="none">no trades this session</div>`; return; }
+  box.innerHTML = d.trades.map((t,idx)=>`
+    <div class="trow ${state.selTrade===idx?'sel':''}" data-idx="${idx}">
+      <span class="time">${t.time}</span>
+      <span class="side ${t.side}">${t.label || (t.side+' '+t.kind)}</span>
+      <span class="px">${t.price.toFixed(2)}</span>
+    </div>`).join("");
+  box.querySelectorAll(".trow").forEach(row=>{
+    row.onclick = ()=>{
+      const idx = +row.dataset.idx;
+      state.selTrade = idx;
+      // frame the selected trade: center a ~60-bar window on it
+      const t = state.day.trades[idx], n = state.day.c.length;
+      const half = 30;
+      let lo = Math.max(0, t.i-half), hi = Math.min(n-1, t.i+half);
+      state.view = {lo,hi};
+      renderLog(); draw();
+    };
+  });
+}
+
+function draw(){
+  const d = state.day; if(!d) return;
+  const wrap = canvas.parentElement;
+  const dpr = window.devicePixelRatio||1;
+  // Measure the WRAPPER's inner box (minus its padding) — the canvas itself is
+  // absolutely positioned and has no intrinsic size, so we must not measure it.
+  const cs = getComputedStyle(wrap);
+  const padX = parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight);
+  const padY = parseFloat(cs.paddingTop)+parseFloat(cs.paddingBottom);
+  const W = Math.max(50, Math.round(wrap.clientWidth  - padX));
+  const H = Math.max(50, Math.round(wrap.clientHeight - padY));
+  // Set the drawing-buffer size (in device pixels) AND the CSS size explicitly.
+  canvas.width = W*dpr; canvas.height = H*dpr;
+  canvas.style.width = W+"px"; canvas.style.height = H+"px";
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,H);
+
+  const padL=8, padR=58, padT=10, padB=26;
+  const plotW = W-padL-padR, plotH = H-padT-padB;
+  const n = d.c.length;
+
+  // visible bar window (zoom/pan). Default = whole day.
+  let vlo = state.view ? state.view.lo : 0;
+  let vhi = state.view ? state.view.hi : n-1;
+  vlo = Math.max(0, vlo); vhi = Math.min(n-1, vhi);
+  if(vhi-vlo < 3){ vhi = Math.min(n-1, vlo+3); }   // don't over-zoom
+  const span = vhi - vlo;
+
+  // compute ±kσ VWAP bands (running std of close-vwap) once per day, cached
+  if(!d._bands){
+    const n2=d.c.length, up=new Array(n2), dn=new Array(n2);
+    let sum=0, sq=0;
+    const k = (typeof shared!=="undefined" && window.__sigmaMult) ? window.__sigmaMult : 2;
+    for(let i=0;i<n2;i++){
+      const dev=d.c[i]-d.vwap[i]; sum+=dev; sq+=dev*dev;
+      const m=sum/(i+1), v=Math.max(0,sq/(i+1)-m*m), s=Math.sqrt(v);
+      up[i]=d.vwap[i]+k*s; dn[i]=d.vwap[i]-k*s;
+    }
+    d._bands={up,dn,k};
+  }
+  const bands=d._bands;
+
+  // price range computed only over VISIBLE bars, so zoom rescales vertically too
+  let lo=Infinity, hi=-Infinity;
+  for(let i=Math.floor(vlo);i<=Math.ceil(vhi);i++){
+    lo=Math.min(lo,d.l[i],bands.dn[i]); hi=Math.max(hi,d.h[i],bands.up[i]);
+  }
+  const pad=(hi-lo)*0.06||1; lo-=pad; hi+=pad;
+
+  // map bar index -> x using the visible window
+  const x = i => padL + ((i - vlo)/span)*plotW;
+  const y = p => padT + (1-(p-lo)/(hi-lo))*plotH;
+  const bw = Math.max(1.5, (plotW/(span+1))*0.62);
+
+  // clip drawing to the plot area so panned candles don't spill over axes
+  ctx.save();
+  ctx.beginPath(); ctx.rect(padL,padT,plotW,plotH); ctx.clip();
+
+  // position shading (long/short background bands) — visible bars only
+  for(let i=Math.floor(vlo);i<=Math.ceil(vhi);i++){
+    if(d.pos[i]===0) continue;
+    ctx.globalAlpha=0.06;
+    ctx.fillStyle = d.pos[i]===1?cssv("--long"):cssv("--short");
+    ctx.fillRect(x(i-0.5),padT,Math.max(1,x(i+0.5)-x(i-0.5)),plotH);
+  }
+  ctx.globalAlpha=1;
+
+  // candles (visible only)
+  for(let i=Math.floor(vlo);i<=Math.ceil(vhi);i++){
+    const up = d.c[i]>=d.o[i];
+    ctx.strokeStyle = up?cssv("--up"):cssv("--down");
+    ctx.fillStyle   = up?cssv("--up"):cssv("--down");
+    const cx=x(i);
+    ctx.beginPath(); ctx.moveTo(cx,y(d.h[i])); ctx.lineTo(cx,y(d.l[i])); ctx.stroke();
+    const yo=y(d.o[i]), yc=y(d.c[i]);
+    ctx.fillRect(cx-bw/2, Math.min(yo,yc), bw, Math.max(1,Math.abs(yc-yo)));
+  }
+
+  // ±kσ VWAP bands: soft fill between them, dashed edges
+  ctx.fillStyle=cssv("--vwap"); ctx.globalAlpha=0.05;
+  ctx.beginPath();
+  let bs=false;
+  for(let i=Math.floor(vlo);i<=Math.ceil(vhi);i++){ const px=x(i),py=y(bands.up[i]); bs?ctx.lineTo(px,py):(ctx.moveTo(px,py),bs=true); }
+  for(let i=Math.ceil(vhi);i>=Math.floor(vlo);i--){ ctx.lineTo(x(i),y(bands.dn[i])); }
+  ctx.closePath(); ctx.fill(); ctx.globalAlpha=1;
+  ctx.strokeStyle=cssv("--vwap"); ctx.globalAlpha=0.5; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+  for(const arr of [bands.up,bands.dn]){
+    ctx.beginPath(); let st=false;
+    for(let i=Math.floor(vlo);i<=Math.ceil(vhi);i++){ const px=x(i),py=y(arr[i]); st?ctx.lineTo(px,py):(ctx.moveTo(px,py),st=true); }
+    ctx.stroke();
+  }
+  ctx.setLineDash([]); ctx.globalAlpha=1;
+
+  // VWAP line
+  ctx.strokeStyle=cssv("--vwap"); ctx.lineWidth=1.6; ctx.beginPath();
+  let started=false;
+  for(let i=Math.floor(vlo);i<=Math.ceil(vhi);i++){
+    const px=x(i),py=y(d.vwap[i]); started?ctx.lineTo(px,py):(ctx.moveTo(px,py),started=true);
+  }
+  ctx.stroke(); ctx.lineWidth=1;
+
+  // trade markers + labels
+  ctx.font='10px '+cssv("--mono");
+  // track label rows near each x to avoid overlap when two events share a bar
+  const placed = [];
+  d.trades.forEach((t,idx)=>{
+    if(t.i < vlo-1 || t.i > vhi+1) return;   // skip off-screen trades
+    const cx=x(t.i), cy=y(t.price);
+    const sel = state.selTrade===idx;
+    const isLong = t.side==="LONG";
+    const isEntry = t.kind==="ENTRY";
+    const col = isLong?cssv("--long"):cssv("--short");
+    const r = sel?7:5;
+
+    // marker: entry = filled triangle (up long / down short); exit = hollow diamond
+    ctx.lineWidth = sel?2.5:1.5;
+    if(isEntry){
+      ctx.fillStyle=col; ctx.strokeStyle=cssv("--bg");
+      ctx.beginPath();
+      if(isLong){ ctx.moveTo(cx,cy-r-2);ctx.lineTo(cx-r,cy+r-1);ctx.lineTo(cx+r,cy+r-1);}
+      else      { ctx.moveTo(cx,cy+r+2);ctx.lineTo(cx-r,cy-r+1);ctx.lineTo(cx+r,cy-r+1);}
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    } else { // EXIT: hollow diamond in the position's colour
+      ctx.fillStyle=cssv("--bg"); ctx.strokeStyle=col; ctx.lineWidth=sel?2.5:2;
+      ctx.beginPath();
+      ctx.moveTo(cx,cy-r-1);ctx.lineTo(cx+r+1,cy);ctx.lineTo(cx,cy+r+1);ctx.lineTo(cx-r-1,cy);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+
+    // selected crosshair
+    if(sel){
+      ctx.strokeStyle=col; ctx.globalAlpha=.5; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(cx,padT); ctx.lineTo(cx,padT+plotH); ctx.stroke();
+      ctx.globalAlpha=1;
+    }
+
+    // label — only draw when zoomed in enough OR trade is selected (avoids clutter)
+    const roomy = span < 140;
+    if(roomy || sel){
+      const txt = t.label || `${t.side} ${t.kind}`;
+      const tw = ctx.measureText(txt).width;
+      // stack labels: entries above the marker, exits below, nudged to dodge neighbours
+      let ty = isEntry ? cy - r - 8 : cy + r + 14;
+      // avoid collision with an already-placed label at similar x
+      for(const p of placed){
+        if(Math.abs(p.x-cx)<tw+6 && Math.abs(p.y-ty)<12){ ty += isEntry?-12:12; }
+      }
+      placed.push({x:cx,y:ty});
+      let lx = cx - tw/2;
+      lx = Math.max(padL+2, Math.min(padL+plotW-tw-2, lx)); // keep on-screen
+      // pill background
+      ctx.globalAlpha = sel?1:0.92;
+      ctx.fillStyle = cssv("--panel-2");
+      ctx.strokeStyle = col; ctx.lineWidth = sel?1.4:1;
+      roundRect(ctx, lx-4, ty-9, tw+8, 15, 4); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = col; ctx.textAlign="left"; ctx.textBaseline="middle";
+      ctx.fillText(txt, lx, ty-1);
+      ctx.globalAlpha=1;
+      // connector line from label to marker
+      ctx.strokeStyle=col; ctx.globalAlpha=.35; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(cx, isEntry?ty+6:ty-9); ctx.lineTo(cx, cy+(isEntry?-r:r)); ctx.stroke();
+      ctx.globalAlpha=1;
+    }
+  });
+  ctx.restore();  // remove clip
+
+  // grid + price axis (drawn after clip so labels sit on the right margin)
+  ctx.strokeStyle=cssv("--grid"); ctx.fillStyle=cssv("--ink-faint");
+  ctx.font='10px '+cssv("--mono"); ctx.textBaseline="middle";
+  const ticks=5;
+  for(let k=0;k<=ticks;k++){
+    const p = lo+(hi-lo)*k/ticks, yy=y(p);
+    ctx.globalAlpha=.35; ctx.beginPath();
+    ctx.moveTo(padL,yy); ctx.lineTo(padL+plotW,yy); ctx.stroke();
+    ctx.globalAlpha=1; ctx.textAlign="left";
+    ctx.fillText(p.toFixed(2), padL+plotW+6, yy);
+  }
+  // time axis — space labels across the visible window
+  ctx.textAlign="center";
+  const stepBars = Math.max(1, Math.round(span/8));
+  for(let i=Math.ceil(vlo);i<=vhi;i+=stepBars){
+    ctx.fillText(d.t[i], x(i), padT+plotH+13);
+  }
+
+  ctx.lineWidth=1;
+  state.geom = {padL,padT,plotW,plotH,padR,padB,n,x,y,lo,hi,vlo,vhi,span};
+}
+
+function roundRect(c,x,y,w,h,r){
+  c.beginPath();
+  c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r);
+  c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath();
+}
+
+// map an x pixel to a fractional bar index within the current view
+function xToBar(px){
+  const g=state.geom; if(!g) return 0;
+  return g.vlo + ((px-g.padL)/g.plotW)*g.span;
+}
+
+// The current view is ALWAYS resolved from state.view when set, else the full day.
+// This is the single source of truth for zoom, so nothing is re-derived from the
+// (clamped) geometry — that was the bug that stopped you zooming back out.
+function curView(){
+  const n = state.day ? state.day.c.length : 1;
+  if(!state.view) return {lo:0, hi:n-1};
+  return {lo:state.view.lo, hi:state.view.hi};
+}
+function clampView(lo,hi){
+  const n = state.day.c.length;
+  let width = hi-lo;
+  const MIN = 4, MAX = n-1;
+  // hard cap: zooming out can never be wider than the whole session
+  if(width >= MAX){ state.view = null; return; }   // fully zoomed out -> whole day
+  if(width < MIN){ const c=(lo+hi)/2; lo=c-MIN/2; hi=c+MIN/2; width=MIN; }
+  if(lo < 0){ lo=0; hi=width; }
+  if(hi > n-1){ hi=n-1; lo=hi-width; }
+  state.view = {lo,hi};
+}
+// Zoom by a factor about a center bar. factor<1 zooms IN, factor>1 zooms OUT.
+function zoomBy(factor, centerBar){
+  if(!state.day) return;
+  const n = state.day.c.length;
+  const v = curView();
+  const c = centerBar==null ? (v.lo+v.hi)/2 : centerBar;
+  // clamp the requested width to the full day BEFORE applying — this is the
+  // maximum zoom-out. It can never produce a window wider than the session.
+  let width = (v.hi - v.lo) * factor;
+  if(width >= n-1){ state.view = null; draw(); return; }   // at/over full day -> fit
+  const frac = (c - v.lo)/(v.hi - v.lo);
+  clampView(c - frac*width, c - frac*width + width);
+  draw();
+}
+
+// hover tooltip + drag-to-pan
+const tip=document.getElementById("tip");
+let dragging=false, dragStartX=0, dragStartView=null, moved=false;
+
+canvas.addEventListener("mousemove",e=>{
+  const g=state.geom, d=state.day; if(!g||!d){tip.style.opacity=0;return;}
+  const rect=canvas.getBoundingClientRect();
+  const mx=e.clientX-rect.left;
+
+  if(dragging){
+    moved=true; tip.style.opacity=0;
+    // pan by the pixel delta since mousedown, applied to the view captured then.
+    const width = dragStartView.hi - dragStartView.lo;
+    const barsPerPx = width / g.plotW;
+    const dx = (mx - dragStartX) * barsPerPx;   // drag right -> move view left
+    clampView(dragStartView.lo - dx, dragStartView.hi - dx);
+    draw();
+    return;
+  }
+
+  if(mx<g.padL||mx>g.padL+g.plotW){tip.style.opacity=0;return;}
+  let i=Math.round(xToBar(mx));
+  i=Math.max(0,Math.min(g.n-1,i));
+  const pos = d.pos[i]===1?"LONG":d.pos[i]===-1?"SHORT":"FLAT";
+  tip.innerHTML =
+    `<span class="r">${d.t[i]}</span>  O ${d.o[i].toFixed(2)} H ${d.h[i].toFixed(2)} `+
+    `L ${d.l[i].toFixed(2)} C ${d.c[i].toFixed(2)}<br>`+
+    `<span class="r">vwap</span> ${d.vwap[i].toFixed(2)}  ·  <span class="r">pos</span> ${pos}`;
+  tip.style.opacity=1;
+  let tx=e.clientX-rect.left+14, ty=e.clientY-rect.top+14;
+  if(tx+tip.offsetWidth>rect.width) tx=e.clientX-rect.left-tip.offsetWidth-14;
+  tip.style.left=tx+"px"; tip.style.top=ty+"px";
+});
+canvas.addEventListener("mouseleave",()=>{tip.style.opacity=0;});
+
+// drag to pan — capture the start view ONCE so panning can't compound
+canvas.addEventListener("mousedown",e=>{
+  if(!state.day) return;
+  e.preventDefault();               // stop native drag-select / page scroll
+  dragging=true; moved=false;
+  dragStartX = e.clientX - canvas.getBoundingClientRect().left;
+  dragStartView = curView();
+  canvas.parentElement.classList.add("panning");
+  tip.style.opacity=0;
+});
+// block the browser's native image/element drag on the canvas outright
+canvas.addEventListener("dragstart",e=>e.preventDefault());
+window.addEventListener("mouseup",()=>{
+  dragging=false; canvas.parentElement.classList.remove("panning");
+});
+
+// +/- and fit buttons
+document.getElementById("zoomin").addEventListener("click",()=>zoomBy(0.6));
+document.getElementById("zoomout").addEventListener("click",()=>zoomBy(1.7));
+document.getElementById("reset").addEventListener("click",()=>{ state.view=null; draw(); });
+
+// controls
+document.getElementById("symseg").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-sym]"); if(!b)return;
+  document.querySelectorAll("#symseg button").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on"); state.sym=b.dataset.sym; buildYearOptions();
+});
+document.getElementById("yearsel").addEventListener("change",e=>{
+  state.year=e.target.value; buildDayOptions();
+});
+document.getElementById("daysel").addEventListener("change",e=>{
+  state.date=e.target.value; loadDay();
+});
+document.getElementById("prev").addEventListener("click",()=>step(-1));
+document.getElementById("next").addEventListener("click",()=>step(1));
+function step(dir){
+  const days=state.index[state.sym][state.year];
+  let i=days.indexOf(state.date)+dir;
+  if(i<0||i>=days.length)return;
+  state.date=days[i]; document.getElementById("daysel").value=state.date; loadDay();
+}
+document.addEventListener("keydown",e=>{
+  if(e.key==="ArrowLeft")step(-1);
+  if(e.key==="ArrowRight")step(1);
+});
+window.addEventListener("resize",()=>{ if(calState.active) return; draw(); });
+
+// ============================ CALENDAR VIEW ==============================
+const calState = { active:false, sym:"QQQ", month:null, cal:null, months:[], selDate:null };
+
+async function loadCalendar(){
+  if(calState.cal) return calState.cal;
+  const r = await fetch("data/calendar.json");
+  calState.cal = await r.json();
+  return calState.cal;
+}
+// list of YYYY-MM that have any trading days, for the current symbol
+function calMonths(){
+  const days = Object.keys(calState.cal[calState.sym]);
+  const set = new Set(days.map(d=>d.slice(0,7)));
+  return [...set].sort();
+}
+function fmtUSD(v){
+  const s = v<0?"-":"+";
+  return s+"$"+Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function buildMonthOptions(){
+  calState.months = calMonths();
+  const sel = document.getElementById("monthsel");
+  sel.innerHTML = calState.months.map(m=>{
+    const dt = new Date(m+"-01T12:00");
+    const lbl = dt.toLocaleDateString("en-US",{month:"long",year:"numeric"});
+    return `<option value="${m}">${lbl}</option>`;
+  }).join("");
+  if(!calState.months.includes(calState.month))
+    calState.month = calState.months[calState.months.length-1]; // default: latest
+  sel.value = calState.month;
+  renderCalendar();
+}
+
+// Calendar data for the active strategy. Trend → the precomputed calendar.json.
+// Mean-rev → compute each day of the CURRENT month with the engine (cached by
+// symbol+config so re-renders are instant; recomputed when config changes).
+async function calDataForMonth(sym, ym){
+  if(shared.strategy==="trend") return calState.cal[sym];
+  const cfg=activeConfig(shared.strategy);
+  const key=sym+"|"+JSON.stringify(cfg)+"|"+ym;
+  calState.mrCache=calState.mrCache||{};
+  if(calState.mrCache[key]) return calState.mrCache[key];
+  // need the raw bars for that month's days → load the year
+  const yr=ym.slice(0,4);
+  const days=await loadYearData(sym, yr);
+  const out={};
+  for(const date of Object.keys(days)){
+    if(date.slice(0,7)!==ym) continue;
+    const eqRef={v:cfg.initialCapital||25000};
+    const r=Engine.simDay(days[date], cfg, eqRef);
+    const rts=r.roundtrips||[];
+    out[date]={ pnl:+(eqRef.v-(cfg.initialCapital||25000)).toFixed(2),
+      n:rts.length, w:rts.filter(t=>t.pnl>0).length };
+  }
+  calState.mrCache[key]=out;
+  return out;
+}
+
+async function renderCalendar(){
+  const ym = calState.month;
+  const [Y,M] = ym.split("-").map(Number);
+  const cal = await calDataForMonth(calState.sym, ym);
+  // gather this month's trading days with data
+  const daysInMonth = [];
+  for(const [date,info] of Object.entries(cal)){
+    if(date.slice(0,7)===ym) daysInMonth.push([date,info]);
+  }
+  daysInMonth.sort((a,b)=>a[0]<b[0]?-1:1);
+
+  // month summary
+  let total=0, nTrades=0, wins=0, tradingDays=0, greenDays=0, best=-1e9, worst=1e9;
+  for(const [,info] of daysInMonth){
+    total+=info.pnl; nTrades+=info.n; wins+=info.w; tradingDays++;
+    if(info.pnl>0) greenDays++;
+    best=Math.max(best,info.pnl); worst=Math.min(worst,info.pnl);
+  }
+  const winRate = nTrades? (wins/nTrades*100):0;
+  document.getElementById("cal-summary").innerHTML = `
+    <div class="stat"><span class="k">Month P&L</span>
+      <span class="big ${total>=0?'pos':'neg'}">${fmtUSD(total)}</span></div>
+    <div class="stat"><span class="k">Trades</span><span class="v">${nTrades}</span></div>
+    <div class="stat"><span class="k">Win rate</span><span class="v">${winRate.toFixed(1)}%</span></div>
+    <div class="stat"><span class="k">Green days</span><span class="v">${greenDays}/${tradingDays}</span></div>
+    <div class="stat"><span class="k">Best day</span><span class="v">${tradingDays?fmtUSD(best):'—'}</span></div>
+    <div class="stat"><span class="k">Worst day</span><span class="v">${tradingDays?fmtUSD(worst):'—'}</span></div>`;
+
+  // build a Mon-Fri grid. Figure out the weekday layout.
+  const grid = document.getElementById("cal-grid");
+  const byDate = Object.fromEntries(daysInMonth);
+  // find max |pnl| for heat scaling
+  const maxAbs = Math.max(1, ...daysInMonth.map(([,i])=>Math.abs(i.pnl)));
+
+  // iterate calendar days of the month, placing weekdays into columns Mon..Fri
+  const first = new Date(Y, M-1, 1);
+  const last = new Date(Y, M, 0).getDate();
+  let cells = "";
+  // leading blanks so day 1 lands in the right weekday column (Mon=0..Fri=4)
+  const wd0 = (first.getDay()+6)%7; // 0=Mon
+  if(wd0<=4){ for(let k=0;k<wd0;k++) cells+=`<div class="cal-cell empty"></div>`; }
+  for(let d=1; d<=last; d++){
+    const dt = new Date(Y,M-1,d);
+    const wd = (dt.getDay()+6)%7;
+    if(wd>4) continue; // skip weekends
+    const ds = `${Y}-${String(M).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const info = byDate[ds];
+    if(!info){
+      cells+=`<div class="cal-cell empty"><span class="dnum">${d}</span></div>`;
+    } else {
+      const pos = info.pnl>=0;
+      const heat = pos?cssv("--up"):cssv("--down");
+      const alpha = 0.06 + 0.16*(Math.abs(info.pnl)/maxAbs);
+      cells+=`<div class="cal-cell trad ${calState.selDate===ds?'sel':''}" data-date="${ds}">
+        <div class="heat" style="background:${heat};opacity:${alpha.toFixed(3)}"></div>
+        <span class="dnum">${d}</span>
+        <span class="dpnl ${pos?'pos':'neg'}">${fmtUSD(info.pnl)}</span>
+        <span class="dn">${info.n} trade${info.n===1?'':'s'}</span>
+      </div>`;
+    }
+  }
+  grid.innerHTML = cells;
+  grid.querySelectorAll(".cal-cell.trad").forEach(c=>{
+    c.onclick = ()=>{
+      calState.selDate=c.dataset.date;
+      // update highlight in place (no full re-render) then show detail
+      grid.querySelectorAll(".cal-cell.trad").forEach(x=>x.classList.remove("sel"));
+      c.classList.add("sel");
+      showDayDetail(c.dataset.date);
+    };
+  });
+  updateMonthNav();
+}
+function updateMonthNav(){
+  const i = calState.months.indexOf(calState.month);
+  document.getElementById("mprev").disabled = i<=0;
+  document.getElementById("mnext").disabled = i>=calState.months.length-1;
+}
+async function showDayDetail(date){
+  const detail = document.getElementById("cal-detail");
+  detail.innerHTML = `<div class="cal-detail-empty">loading…</div>`;
+  const yr = date.slice(0,4);
+  const days = await loadYearData(calState.sym, yr);
+  const day = dayForStrategy(days[date]);
+  const rts = day.roundtrips||[];
+  const dt = new Date(date+"T12:00");
+  const dstr = dt.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"});
+  const pos = day.pnl_dollars>=0;
+  const rows = rts.map(r=>{
+    const rp = r.pnl>=0;
+    return `<div class="cdrow ${rp?'pos':'neg'}">
+      <span class="n">#${r.num}</span>
+      <span><span class="side ${r.side}">${r.side}</span>
+        <span class="times"> ${r.entry_time}→${r.exit_time}</span></span>
+      <span class="pnl ${rp?'pos':'neg'}">${fmtUSD(r.pnl)}</span>
+    </div>`;
+  }).join("");
+  detail.innerHTML = `
+    <div class="cd-head">
+      <div class="d">${dstr}</div>
+      <div class="p ${pos?'pos':'neg'}">${fmtUSD(day.pnl_dollars)}</div>
+      <div class="m"><span>${rts.length} trades</span>
+        <span>${rts.filter(r=>r.pnl>0).length} win / ${rts.filter(r=>r.pnl<=0).length} loss</span></div>
+      <button class="go" id="cd-go">View on chart →</button>
+    </div>
+    <div class="cd-list"><h3>Round-trip trades</h3>${rows||'<div class="cal-detail-empty">no trades</div>'}</div>`;
+  document.getElementById("cd-go").onclick = ()=>{
+    // jump to chart view on this day
+    state.sym = calState.sym; state.year = yr; state.date = date;
+    setView("chart");
+    document.querySelectorAll("#symseg button").forEach(x=>
+      x.classList.toggle("on", x.dataset.sym===state.sym));
+    buildYearOptions(); // will load the day
+    document.getElementById("daysel").value = date;
+  };
+}
+
+// view switching
+function setView(v){
+  const isCal = v==="calendar";
+  const isSweep = v==="sweep";
+  const isChart = v==="chart";
+  calState.active = isCal;
+  document.getElementById("chart-view").style.display = isChart?"grid":"none";
+  document.getElementById("calendar-view").style.display = isCal?"grid":"none";
+  document.getElementById("sweep-view").style.display = isSweep?"grid":"none";
+  document.getElementById("chart-controls").style.display = isChart?"flex":"none";
+  document.getElementById("calendar-controls").style.display = isCal?"flex":"none";
+  document.getElementById("sweep-controls").style.display = isSweep?"flex":"none";
+  document.querySelectorAll("#viewseg button").forEach(b=>
+    b.classList.toggle("on", b.dataset.view===v));
+  if(isCal){
+    loadCalendar().then(()=>{
+      calState.sym = state.sym;
+      document.querySelectorAll("#symseg-cal button").forEach(x=>
+        x.classList.toggle("on", x.dataset.sym===calState.sym));
+      buildMonthOptions();
+    });
+  } else if(isSweep){
+    swState.sym = state.sym;
+    document.querySelectorAll("#symseg-sweep button").forEach(x=>
+      x.classList.toggle("on", x.dataset.sym===swState.sym));
+    liveRun();
+    if(swState.results) drawSweep();
+  } else {
+    draw();
+  }
+}
+document.getElementById("viewseg").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-view]"); if(!b)return;
+  setView(b.dataset.view);
+});
+// global strategy toggle — affects Chart, Calendar, and Analysis
+document.getElementById("stratseg").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-strat]"); if(!b)return;
+  document.querySelectorAll("#stratseg button").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on"); shared.strategy=b.dataset.strat;
+  // keep the Analysis-tab strategy dropdown in sync so the shared config matches
+  const sel=document.getElementById("sw-strat");
+  if(sel && sel.value!==shared.strategy){ sel.value=shared.strategy; syncStrategyUI(); }
+  // re-render whichever view is showing
+  const cur=document.querySelector("#viewseg button.on").dataset.view;
+  if(cur==="chart"){ if(state.date) loadDay(); }
+  else if(cur==="calendar"){ calState.selDate=null;
+    document.getElementById("cal-detail").innerHTML=
+      `<div class="cal-detail-empty">Select a day to see its trades</div>`;
+    renderCalendar(); }
+  else if(cur==="sweep"){ liveRun(); }
+});
+document.getElementById("symseg-cal").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-sym]"); if(!b)return;
+  document.querySelectorAll("#symseg-cal button").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on"); calState.sym=b.dataset.sym; calState.selDate=null;
+  document.getElementById("cal-detail").innerHTML =
+    `<div class="cal-detail-empty">Select a day to see its trades</div>`;
+  buildMonthOptions();
+});
+document.getElementById("monthsel").addEventListener("change",e=>{
+  calState.month=e.target.value; renderCalendar();
+});
+function stepMonth(dir){
+  const i=calState.months.indexOf(calState.month)+dir;
+  if(i<0||i>=calState.months.length)return;
+  calState.month=calState.months[i];
+  document.getElementById("monthsel").value=calState.month; renderCalendar();
+}
+document.getElementById("mprev").addEventListener("click",()=>stepMonth(-1));
+document.getElementById("mnext").addEventListener("click",()=>stepMonth(1));
+
+// ============================ SWEEP / ANALYSIS VIEW =====================
+const swState = { sym:"QQQ", allDays:{}, results:null };
+
+// load & cache every year for a symbol as one chronological array of day objects
+async function loadAllDays(sym){
+  if(swState.allDays[sym]) return swState.allDays[sym];
+  const years = Object.keys(state.index[sym]).sort();
+  const arr=[];
+  for(const yr of years){
+    const days = await loadYearData(sym, yr);
+    for(const d of state.index[sym][yr]) arr.push(days[d]);
+  }
+  swState.allDays[sym]=arr;
+  return arr;
+}
+function swBaseParams(){
+  const commSlider = +document.getElementById("sw-comm").value;
+  return {
+    strategy: document.getElementById("sw-strat").value,
+    barMinutes: +document.getElementById("sw-tf").value,
+    riskPct: (+document.getElementById("sw-risk").value)/100,
+    commissionPS: commSlider*0.0001,
+    entryMode: document.getElementById("sw-entry").value,
+    confirmBars: +document.getElementById("sw-confirm").value,
+    tpMult: (+document.getElementById("sw-tp").value)/10,
+    stopMult: (+document.getElementById("sw-sl").value)/10,
+    bandMode: document.getElementById("sw-band").value,
+    sigmaMult: (+document.getElementById("sw-sigma").value)/10,
+    entryMult: (+document.getElementById("sw-emult").value)/10,
+    trendFilter: document.getElementById("sw-tfilter").checked,
+    trendMax: (+document.getElementById("sw-tmax").value)/100,
+    initialCapital: 25000,
+  };
+}
+// values to sweep for each parameter
+function swValues(param){
+  if(param==="riskPct") return [0.1,0.25,0.5,0.75,1.0];
+  if(param==="barMinutes") return [1,5,15,30];
+  if(param==="commissionPS") return [0,0.0005,0.001,0.002,0.005];
+  if(param==="confirmBars") return [1,2,3,4,5];
+  if(param==="sigmaMult") return [1.5,2,2.5,3,3.5];
+  if(param==="entryMult") return [1.5,2,2.5,3,3.5];
+  if(param==="stopMult") return [0,2,3,4,5];
+  if(param==="tpMult") return [0,2,3,4,5];
+  if(param==="trendMax") return [0.25,0.4,0.5,0.6,0.75];
+  return [];
+}
+// grid-search candidate parameters (checkbox list) with their value sets
+const GRID_PARAMS = {
+  barMinutes:{label:"Timeframe",vals:[1,5,15]},
+  sigmaMult:{label:"Fade σ",vals:[1.5,2,2.5,3]},
+  entryMult:{label:"Fade dist",vals:[1.5,2,2.5,3]},
+  stopMult:{label:"Stop-loss ×",vals:[0,2,3,4]},
+  tpMult:{label:"Take-profit ×",vals:[0,2,3,4]},
+  trendMax:{label:"Trend filter",vals:[0.25,0.4,0.6]},
+  riskPct:{label:"Position size",vals:[0.25,0.5,1.0]},
+};
+const METRIC_LABEL = {totalRet:"Total return %",sharpe:"Sharpe",maxDD:"Max drawdown %",
+  finalEq:"Final $",nTrades:"Trades",winRate:"Win rate %"};
+function metricVal(m,key){
+  if(key==="totalRet") return m.totalRet*100;
+  if(key==="maxDD") return m.maxDD*100;
+  if(key==="winRate") return m.winRate*100;
+  return m[key];
+}
+function fmtParamVal(param,v){
+  if(param==="riskPct") return (v*100)+"%";
+  if(param==="barMinutes") return v+"m";
+  if(param==="commissionPS") return "$"+v;
+  if(param==="sigmaMult") return v+"σ";
+  if(param==="trendMax") return v.toFixed(2);
+  return v;
+}
+function fmtMetric(key,v){
+  if(key==="finalEq") return "$"+Math.round(v).toLocaleString();
+  if(key==="nTrades") return Math.round(v).toLocaleString();
+  if(key==="sharpe") return v.toFixed(2);
+  return v.toFixed(1)+(key==="totalRet"||key==="maxDD"||key==="winRate"?"%":"");
+}
+
+async function runSweep(){
+  const mode=document.getElementById("sw-mode").value;
+  if(mode==="grid") return runGrid();
+  const btn=document.getElementById("sw-run");
+  const param=document.getElementById("sw-param").value;
+  const metric=document.getElementById("sw-metric").value;
+  const values=swValues(param);
+  document.getElementById("sw-empty").style.display="none";
+  const prog=document.getElementById("sw-progress");
+  prog.style.display="flex"; btn.disabled=true;
+
+  const days=await loadAllDays(swState.sym);
+  const base=swBaseParams();
+  const out=[];
+  for(let i=0;i<values.length;i++){
+    prog.textContent=`Running ${i+1}/${values.length}  (${fmtParamVal(param,values[i])})…`;
+    await new Promise(r=>setTimeout(r,10));
+    const m=Engine.runBacktest(days, {...base,[param]:values[i]});
+    out.push({value:values[i], ...m});
+  }
+  prog.style.display="none"; btn.disabled=false;
+  swState.results={param,metric,values:out};
+  drawSweep(); renderSweepTable();
+}
+
+// grid search: run every combination of the checked parameters, rank by metric
+async function runGrid(){
+  const btn=document.getElementById("sw-run");
+  const metric=document.getElementById("sw-metric").value;
+  const checked=[...document.querySelectorAll("#sw-grid-checks input:checked")].map(c=>c.value);
+  if(!checked.length){ document.getElementById("sw-note").textContent="Pick at least one parameter to grid-search."; return; }
+  const grid={}; checked.forEach(k=>grid[k]=GRID_PARAMS[k].vals);
+  const total=checked.reduce((a,k)=>a*GRID_PARAMS[k].vals.length,1);
+  document.getElementById("sw-empty").style.display="none";
+  const prog=document.getElementById("sw-progress");
+  prog.style.display="flex"; btn.disabled=true;
+
+  const days=await loadAllDays(swState.sym);
+  const base=swBaseParams();
+  // run combos with periodic yields so the progress paints
+  const keys=Object.keys(grid);
+  let combos=[{}];
+  for(const k of keys){ const nx=[]; for(const c of combos) for(const v of grid[k]) nx.push({...c,[k]:v}); combos=nx; }
+  const out=[];
+  for(let i=0;i<combos.length;i++){
+    if(i%10===0){ prog.textContent=`Grid ${i+1}/${combos.length}…`; await new Promise(r=>setTimeout(r,0)); }
+    out.push({params:combos[i], ...Engine.runBacktest(days,{...base,...combos[i]})});
+  }
+  prog.style.display="none"; btn.disabled=false;
+  // rank: higher better, except maxDD (closer to 0 better)
+  out.sort((a,b)=> metric==="maxDD" ? b[metric]-a[metric] : metricVal(b,metric)-metricVal(a,metric));
+  swState.grid={keys,metric,rows:out};
+  renderGrid();
+}
+
+function renderGrid(){
+  const G=swState.grid; if(!G) return;
+  // clear the line chart; grid uses the table area for a leaderboard
+  const cv=document.getElementById("sw-chart"); cv.getContext("2d").clearRect(0,0,cv.width,cv.height);
+  document.getElementById("sw-empty").style.display="none";
+  const metricKeys=["totalRet","sharpe","maxDD","finalEq","nTrades","winRate"];
+  const head=`<tr>`+G.keys.map(k=>`<th>${GRID_PARAMS[k].label}</th>`).join("")+
+    metricKeys.map(k=>`<th>${METRIC_LABEL[k]}</th>`).join("")+`</tr>`;
+  const rows=G.rows.slice(0,50).map((r,idx)=>`<tr class="${idx===0?'best':''}">`+
+    G.keys.map(k=>`<td>${fmtParamVal(k,r.params[k])}</td>`).join("")+
+    metricKeys.map(k=>`<td>${fmtMetric(k,metricVal(r,k))}</td>`).join("")+`</tr>`).join("");
+  document.getElementById("sw-table").innerHTML=
+    `<table>${head}${rows}</table>`;
+  document.getElementById("sw-note").innerHTML=
+    `Ranked ${G.rows.length} combinations by ${METRIC_LABEL[G.metric]}. Best row highlighted; top 50 shown.`;
+}
+
+function drawSweep(){
+  const R=swState.results; if(!R) return;
+  const cv=document.getElementById("sw-chart");
+  const wrap=cv.parentElement, dpr=window.devicePixelRatio||1;
+  const W=wrap.clientWidth, H=wrap.clientHeight;
+  cv.width=W*dpr; cv.height=H*dpr; cv.style.width=W+"px"; cv.style.height=H+"px";
+  const x=cv.getContext("2d"); x.setTransform(dpr,0,0,dpr,0,0); x.clearRect(0,0,W,H);
+  const pad={l:64,r:20,t:20,b:44};
+  const pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
+  const pts=R.values.map((r,i)=>({i,x:i,label:fmtParamVal(R.param,r.value),y:metricVal(r,R.metric)}));
+  let lo=Math.min(...pts.map(p=>p.y)), hi=Math.max(...pts.map(p=>p.y));
+  if(lo===hi){lo-=1;hi+=1;} const padY=(hi-lo)*0.12; lo-=padY; hi+=padY;
+  const X=i=>pad.l+(pts.length<=1?pw/2:(i/(pts.length-1))*pw);
+  const Y=v=>pad.t+(1-(v-lo)/(hi-lo))*ph;
+
+  // zero line
+  const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  if(lo<0&&hi>0){ x.strokeStyle=css("--line"); x.beginPath();
+    x.moveTo(pad.l,Y(0)); x.lineTo(pad.l+pw,Y(0)); x.stroke(); }
+  // y grid + labels
+  x.fillStyle=css("--ink-faint"); x.font='10px '+css("--mono"); x.textBaseline="middle";
+  for(let k=0;k<=4;k++){ const v=lo+(hi-lo)*k/4, yy=Y(v);
+    x.strokeStyle=css("--grid"); x.globalAlpha=.4; x.beginPath();
+    x.moveTo(pad.l,yy); x.lineTo(pad.l+pw,yy); x.stroke(); x.globalAlpha=1;
+    x.textAlign="right"; x.fillText(fmtMetric(R.metric,v), pad.l-8, yy); }
+  // line + points
+  x.strokeStyle=css("--long"); x.lineWidth=2; x.beginPath();
+  pts.forEach((p,i)=>{ const px=X(p.x),py=Y(p.y); i?x.lineTo(px,py):x.moveTo(px,py); });
+  x.stroke(); x.lineWidth=1;
+  pts.forEach(p=>{ x.fillStyle=css("--long"); x.beginPath();
+    x.arc(X(p.x),Y(p.y),4,0,7); x.fill();
+    x.fillStyle=css("--ink"); x.textAlign="center"; x.textBaseline="bottom";
+    x.fillText(fmtMetric(R.metric,p.y), X(p.x), Y(p.y)-8);
+    x.fillStyle=css("--ink-faint"); x.textBaseline="top";
+    x.fillText(p.label, X(p.x), pad.t+ph+8); });
+  // axis titles
+  x.fillStyle=css("--ink-dim"); x.textAlign="center"; x.textBaseline="bottom";
+  x.font='11px '+css("--sans");
+}
+function renderSweepTable(){
+  const R=swState.results; if(!R) return;
+  const keys=["totalRet","sharpe","maxDD","finalEq","nTrades","winRate"];
+  // best row by the chosen metric (higher is better except maxDD)
+  let bestI=0, bestV=-Infinity;
+  R.values.forEach((r,i)=>{ let v=metricVal(r,R.metric); if(R.metric==="maxDD")v=-Math.abs(v);
+    if(v>bestV){bestV=v;bestI=i;} });
+  const head=`<tr><th>${METRIC_LABEL[R.param]||R.param}</th>`+
+    keys.map(k=>`<th>${METRIC_LABEL[k]}</th>`).join("")+`</tr>`;
+  const rows=R.values.map((r,i)=>`<tr class="${i===bestI?'best':''}">
+    <td>${fmtParamVal(R.param,r.value)}</td>`+
+    keys.map(k=>`<td>${fmtMetric(k,metricVal(r,k))}</td>`).join("")+`</tr>`).join("");
+  document.getElementById("sw-table").innerHTML=`<table>${head}${rows}</table>`;
+}
+
+// live single-run readout at current base params (recomputes on any change)
+let liveTimer=null;
+async function liveRun(){
+  if(!swState.sym || !state.index) return;
+  const days=await loadAllDays(swState.sym);
+  const p=swBaseParams();
+  const m=Engine.runBacktest(days, p);
+  const el=document.getElementById("sw-live");
+  if(!el) return;
+  const tf=p.barMinutes+"m", rk=(p.riskPct*100)+"%";
+  let tag;
+  if(p.strategy==="meanrev"){
+    const band=p.bandMode==="sigma"?`${p.sigmaMult}σ`:`${p.entryMult}× dist`;
+    const filt=p.trendFilter?` · filter≤${p.trendMax.toFixed(2)}`:"";
+    const sl=p.stopMult>0?` · SL ${p.stopMult}×`:"";
+    tag=`mean-rev · ${tf} · fade ${band}${sl}${filt}`;
+  } else {
+    const en=p.entryMode==="confirm"?`confirm ${p.confirmBars}`:"close";
+    const sl=p.stopMult>0?` · SL ${p.stopMult}×`:"", tp=p.tpMult>0?` · TP ${p.tpMult}×`:"";
+    tag=`trend · ${tf} · ${rk} · ${en}${sl}${tp}`;
+  }
+  el.innerHTML=`
+    <div class="lstat"><span class="lk">Final $</span>
+      <span class="lv ${m.finalEq>=25000?'pos':'neg'}">$${Math.round(m.finalEq).toLocaleString()}</span></div>
+    <div class="lstat"><span class="lk">Total return</span>
+      <span class="lv ${m.totalRet>=0?'pos':'neg'}">${(m.totalRet*100).toFixed(1)}%</span></div>
+    <div class="lstat"><span class="lk">Sharpe</span><span class="lv">${m.sharpe.toFixed(2)}</span></div>
+    <div class="lstat"><span class="lk">Max DD</span><span class="lv neg">${(m.maxDD*100).toFixed(1)}%</span></div>
+    <div class="lstat"><span class="lk">Trades</span><span class="lv">${m.nTrades.toLocaleString()}</span></div>
+    <div class="lstat"><span class="lk">Win rate</span><span class="lv">${(m.winRate*100).toFixed(1)}%</span></div>
+    <span class="tag">${tag}</span>`;
+}
+function liveRunDebounced(){ clearTimeout(liveTimer); liveTimer=setTimeout(liveRun,180); }
+
+// show/hide strategy-specific control groups
+function syncStrategyUI(){
+  const strat=document.getElementById("sw-strat").value;
+  // trend controls: trend only. band/σ controls: mean-rev AND combined.
+  document.querySelector(".sw-strat-trend").style.display = strat==="trend"?"block":"none";
+  document.querySelector(".sw-strat-mr").style.display = (strat==="meanrev"||strat==="combined")?"block":"none";
+  // combined always uses the σ-band (not avg-dist), so hide the band-basis switch for it
+  document.getElementById("sw-band").parentElement.style.display = strat==="combined"?"none":"flex";
+  if(strat==="combined"){ document.getElementById("sw-band").value="sigma"; syncBandUI(); }
+  // keep the chart's band multiplier in sync with the σ slider
+  window.__sigmaMult = (+document.getElementById("sw-sigma").value)/10;
+}
+function syncBandUI(){
+  const band=document.getElementById("sw-band").value;
+  document.getElementById("sw-sigma-wrap").style.display = band==="sigma"?"flex":"none";
+  document.getElementById("sw-emult-wrap").style.display = band==="avgdist"?"flex":"none";
+}
+function syncModeUI(){
+  const mode=document.getElementById("sw-mode").value;
+  document.getElementById("sw-sweep-param").style.display = mode==="sweep"?"flex":"none";
+  document.getElementById("sw-grid-fields").style.display = mode==="grid"?"flex":"none";
+  document.getElementById("sw-run").textContent = mode==="grid"?"Run grid search":"Run sweep";
+}
+// build the grid-search checkbox list
+function buildGridChecks(){
+  const box=document.getElementById("sw-grid-checks");
+  box.innerHTML=Object.entries(GRID_PARAMS).map(([k,v])=>
+    `<label><input type="checkbox" value="${k}" ${['sigmaMult','stopMult'].includes(k)?'checked':''}>`+
+    `${v.label} <span style="color:var(--ink-faint)">(${v.vals.length})</span></label>`).join("");
+}
+
+// sweep UI wiring
+document.getElementById("sw-strat").addEventListener("change",()=>{
+  syncStrategyUI();
+  // keep the global toggle and shared strategy in sync
+  shared.strategy=document.getElementById("sw-strat").value;
+  document.querySelectorAll("#stratseg button").forEach(x=>
+    x.classList.toggle("on", x.dataset.strat===shared.strategy));
+  liveRunDebounced();
+});
+document.getElementById("sw-band").addEventListener("change",()=>{syncBandUI();liveRunDebounced();});
+document.getElementById("sw-mode").addEventListener("change",syncModeUI);
+document.getElementById("sw-risk").addEventListener("input",e=>{
+  document.getElementById("sw-risk-v").textContent=e.target.value+"%"; liveRunDebounced();});
+document.getElementById("sw-comm").addEventListener("input",e=>{
+  document.getElementById("sw-comm-v").textContent=(e.target.value*0.0001).toFixed(4); liveRunDebounced();});
+document.getElementById("sw-confirm").addEventListener("input",e=>{
+  document.getElementById("sw-confirm-v").textContent=e.target.value; liveRunDebounced();});
+document.getElementById("sw-tp").addEventListener("input",e=>{
+  document.getElementById("sw-tp-v").textContent=e.target.value==="0"?"off":(e.target.value/10)+"×"; liveRunDebounced();});
+document.getElementById("sw-sl").addEventListener("input",e=>{
+  document.getElementById("sw-sl-v").textContent=e.target.value==="0"?"off":(e.target.value/10)+"×"; liveRunDebounced();});
+document.getElementById("sw-sigma").addEventListener("input",e=>{
+  document.getElementById("sw-sigma-v").textContent=(e.target.value/10).toFixed(1)+"σ";
+  window.__sigmaMult=(+e.target.value)/10;
+  // if viewing the chart, recompute bands and redraw
+  if(state.day){ delete state.day._bands; if(!calState.active && document.querySelector("#viewseg button.on").dataset.view==="chart") draw(); }
+  liveRunDebounced();});
+document.getElementById("sw-emult").addEventListener("input",e=>{
+  document.getElementById("sw-emult-v").textContent=(e.target.value/10).toFixed(1)+"×"; liveRunDebounced();});
+document.getElementById("sw-tmax").addEventListener("input",e=>{
+  document.getElementById("sw-tmax-v").textContent=(e.target.value/100).toFixed(2); liveRunDebounced();});
+document.getElementById("sw-tfilter").addEventListener("change",e=>{
+  document.getElementById("sw-tmax-wrap").style.display=e.target.checked?"flex":"none"; liveRunDebounced();});
+document.getElementById("sw-tf").addEventListener("change",liveRunDebounced);
+document.getElementById("sw-entry").addEventListener("change",e=>{
+  document.getElementById("sw-confirm-wrap").style.display=
+    e.target.value==="confirm"?"flex":"none"; liveRunDebounced();});
+document.getElementById("sw-run").addEventListener("click",runSweep);
+document.getElementById("symseg-sweep").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-sym]"); if(!b)return;
+  document.querySelectorAll("#symseg-sweep button").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on"); swState.sym=b.dataset.sym; swState.results=null; swState.grid=null;
+  document.getElementById("sw-table").innerHTML="";
+  document.getElementById("sw-empty").style.display="flex";
+  const cv=document.getElementById("sw-chart"); cv.getContext("2d").clearRect(0,0,cv.width,cv.height);
+  liveRun();
+});
+buildGridChecks(); syncStrategyUI(); syncBandUI(); syncModeUI();
+document.getElementById("sw-note").innerHTML=
+  "Runs the full 2018–2023 backtest in your browser. Uses equal-weight VWAP "+
+  "(no volume in the data), so absolute figures differ slightly from the "+
+  "reference backtest — use it for comparing settings.";
+
+loadIndex();
+</script>
+</body>
+</html>
