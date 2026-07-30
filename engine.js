@@ -210,18 +210,21 @@ const Engine = (() => {
 
     const eqStart=equityRef.v;
     const roundtrips=[];
-    let pos=0, entryPx=0, entryEq=0, openNum=0, num=0;
+    let pos=0, entryPx=0, entryEq=0, openNum=0, num=0, openRegime='trend';
 
-    // helper to apply a fill (entering/exiting) with commission
-    function tradeTo(newPos, px, i){
+    // helper to apply a fill (entering/exiting) with commission.
+    // `enterRegime` records which leg (trend/meanrev) is opening a new position.
+    function tradeTo(newPos, px, i, enterRegime){
       const dh=newPos-pos;
       if(dh===0) return;
       const shares=Math.abs(dh)*(equityRef.v*p.riskPct/px);
       equityRef.v -= shares*p.commissionPS;
       if(pos!==0){ // closing (or flipping through) an open position
-        roundtrips.push({num:openNum, pnl:equityRef.v-entryEq, side:pos>0?'LONG':'SHORT'});
+        roundtrips.push({num:openNum, pnl:equityRef.v-entryEq, side:pos>0?'LONG':'SHORT',
+                         regime:openRegime});
       }
-      if(newPos!==0){ num++; openNum=num; entryPx=px; entryEq=equityRef.v; }
+      if(newPos!==0){ num++; openNum=num; entryPx=px; entryEq=equityRef.v;
+        openRegime = enterRegime || (strat==='combined'?regime:strat); }
       pos=newPos;
     }
 
@@ -251,12 +254,12 @@ const Engine = (() => {
           // exit trend, switch to mean-rev SHORT. Mirror for the lower band.
           if(armedSide===1 && bars.c[i] < upper){
             if(pos!==0) tradeTo(0, bars.c[i], i);
-            tradeTo(-1, bars.c[i], i);              // fade short toward VWAP
+            tradeTo(-1, bars.c[i], i, 'meanrev');   // fade short toward VWAP
             regime='meanrev'; armedSide=0; held[i]=pos; continue;
           }
           if(armedSide===-1 && bars.c[i] > lower){
             if(pos!==0) tradeTo(0, bars.c[i], i);
-            tradeTo(1, bars.c[i], i);               // fade long toward VWAP
+            tradeTo(1, bars.c[i], i, 'meanrev');    // fade long toward VWAP
             regime='meanrev'; armedSide=0; held[i]=pos; continue;
           }
         }

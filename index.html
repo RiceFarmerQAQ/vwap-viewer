@@ -228,7 +228,7 @@
 <header>
   <h1>VWAP Trend Trading</h1>
   <span class="sub" id="subtitle">loading…</span>
-  <span class="sub" style="color:var(--long)">build v15</span>
+  <span class="sub" style="color:var(--long)">build v16</span>
   <div class="spacer"></div>
   <div class="seg" id="viewseg" style="margin-right:6px">
     <button data-view="chart" class="on">Chart</button>
@@ -493,6 +493,18 @@ function dayForStrategy(rawDay){
   const bars=r.bars, vwap=r.vwap, held=r.held;
   // build trade markers (ENTRY/EXIT) from held[] transitions, numbered per day,
   // and pair them into roundtrips carrying times/prices for the calendar detail.
+  // For the combined strategy, prefix each label with the regime (Trend/Reversion)
+  // that opened the position, so you can see which sub-strategy placed the trade.
+  const regimeByNum={};
+  for(const rt of r.roundtrips){ if(rt.regime) regimeByNum[rt.num]=rt.regime; }
+  const showRegime = shared.strategy==="combined";
+  const regLabel = rg => rg==="meanrev" ? "Reversion" : "Trend";
+  const mkLabel = (side,kind,num) => {
+    const s = side[0]+side.slice(1).toLowerCase();     // Long / Short
+    const k = kind[0]+kind.slice(1).toLowerCase();     // Entry / Exit
+    const pre = showRegime ? (regLabel(regimeByNum[num]||"trend")+" ") : "";
+    return `${pre}${s} ${k} #${num}`;
+  };
   const trades=[]; let prev=0, num=0, openNum=0, openT="", openPx=0;
   const rtByNum={};
   const sideName={1:"LONG","-1":"SHORT",0:"FLAT"};
@@ -502,19 +514,21 @@ function dayForStrategy(rawDay){
       if(prev!==0){
         trades.push({i, time:bars.t[i], price:+bars.c[i].toFixed(4),
           side:sideName[prev], kind:"EXIT", num:openNum,
-          label:`${sideName[prev][0]+sideName[prev].slice(1).toLowerCase()} Exit #${openNum}`});
+          regime:regimeByNum[openNum]||"trend",
+          label:mkLabel(sideName[prev],"EXIT",openNum)});
         if(rtByNum[openNum]){ rtByNum[openNum].exit_time=bars.t[i]; rtByNum[openNum].exit_px=+bars.c[i].toFixed(4); }
       }
       if(h!==0){ num++; openNum=num; openT=bars.t[i]; openPx=+bars.c[i].toFixed(4);
         trades.push({i, time:bars.t[i], price:openPx, side:sideName[h], kind:"ENTRY", num:openNum,
-          label:`${sideName[h][0]+sideName[h].slice(1).toLowerCase()} Entry #${openNum}`});
+          regime:regimeByNum[openNum]||"trend",
+          label:mkLabel(sideName[h],"ENTRY",openNum)});
         rtByNum[openNum]={num:openNum, side:sideName[h], entry_time:openT, entry_px:openPx,
-          exit_time:"", exit_px:0}; }
+          exit_time:"", exit_px:0, regime:regimeByNum[num]||"trend"}; }
     }
     prev=h;
   }
   // attach engine's $ P&L to each roundtrip by number
-  for(const rt of r.roundtrips){ if(rtByNum[rt.num]) rtByNum[rt.num].pnl=+rt.pnl.toFixed(2); }
+  for(const rt of r.roundtrips){ if(rtByNum[rt.num]){ rtByNum[rt.num].pnl=+rt.pnl.toFixed(2); rtByNum[rt.num].regime=rt.regime||"trend"; } }
   const roundtrips=Object.values(rtByNum).filter(rt=>rt.pnl!==undefined);
   const eqStart=cfg.initialCapital||25000, eqEnd=eqRef.v;
   return {
@@ -606,9 +620,11 @@ function renderLog(){
       const cls = gain?"pos":"neg";
       const pnlStr = pnl!=null ? (pnl>=0?"+$":"-$")+Math.abs(pnl).toFixed(2) : "—";
       const move = ((xt.price-e.price)/e.price*100)*(e.side==="LONG"?1:-1);
+      const regPre = (shared.strategy==="combined" && e.regime)
+                     ? (e.regime==="meanrev"?"Reversion ":"Trend ") : "";
       summary=`<div class="tsum ${cls}">
         <div class="tsum-top">
-          <span class="tsum-side ${e.side}">${e.side} #${state.selNum}</span>
+          <span class="tsum-side ${e.side}">${regPre}${e.side} #${state.selNum}</span>
           <span class="tsum-pnl">${pnlStr}</span>
         </div>
         <div class="tsum-row"><span>Entry</span><span>${e.time} @ ${e.price.toFixed(2)}</span></div>
